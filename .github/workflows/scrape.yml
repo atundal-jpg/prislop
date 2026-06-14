@@ -1,12 +1,10 @@
 name: scrape-prislop
 
-# Kjører hver 6. time + manuelt fra Actions-fanen.
 on:
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch: {}
 
-# Unngå overlappende kjøringer
 concurrency:
   group: scrape-prislop
   cancel-in-progress: false
@@ -23,9 +21,11 @@ jobs:
           python-version: "3.12"
 
       - name: Installer avhengigheter
+        working-directory: scraper
         run: pip install -r requirements.txt
 
       - name: Høst og last inn
+        working-directory: scraper
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python run_pipeline.py
