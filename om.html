@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Om Prisløp</title>
+<meta name="description" content="Prisløp er en uavhengig prissammenligning for løpesko fra norske nettbutikker, med størrelsesfilter og prisvarsel." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#F4F5F1; --ink:#13151A; --muted:#666C75; --line:#E2E3DB;
+    --track:#173A5E; --signal:#FF4A2E;
+    --disp:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif; --mono:'Space Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  a{color:var(--track)}
+  h1,h2{font-family:var(--disp);letter-spacing:-.02em;line-height:1.1;margin:0}
+  header{border-bottom:1px solid var(--line);background:#fff}
+  .bar{display:flex;align-items:center;justify-content:space-between;height:62px;max-width:1060px;margin:0 auto;padding:0 24px}
+  .logo{font-family:var(--disp);font-weight:700;font-size:21px;letter-spacing:-.03em;display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:var(--signal);box-shadow:13px 0 0 -2px var(--track),26px 0 0 -4px var(--muted)}
+  .bar nav a{font-size:14px;color:var(--muted);text-decoration:none;margin-left:20px}
+  .bar nav a:hover{color:var(--ink)}
+  .hd{padding:54px 0 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(30px,5.5vw,48px);margin-top:10px}
+  .lede{font-size:clamp(17px,2.4vw,20px);color:#2b2f37;margin:18px 0 0}
+  .prose{padding:30px 0 60px}
+  .prose h2{font-size:20px;margin:34px 0 8px}
+  .prose p{margin:0 0 14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:22px 0}
+  .card h2{margin-top:0}
+  footer{border-top:1px solid var(--line);padding:34px 0 50px;color:var(--muted);font-size:13.5px;background:#fff}
+  footer a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+  .frow{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;max-width:760px;margin:0 auto;padding:0 24px}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="logo" href="index.html"><span class="dot"></span>Prisløp</a>
+    <nav><a href="index.html">Hjem</a><a href="om.html">Om</a><a href="personvern.html">Personvern</a></nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hd">
+    <p class="eyebrow">Om oss</p>
+    <h1>En ærlig pris­jakt på løpesko.</h1>
+    <p class="lede">Prisløp er en uavhengig prissammenligning for løpesko fra norske nettbutikker — med det de fleste hopper over: hvilke størrelser som faktisk er på lager.</p>
+  </div>
+
+  <div class="prose">
+    <h2>Problemet vi løser</h2>
+    <p>Du finner ofte prisen på en løpesko lett nok. Det du sjelden finner, er om akkurat din størrelse er inne — og om den er billigere et annet sted akkurat nå. Du ender med sju åpne faner og halv oversikt. Prisløp samler prisene på ett sted, viser lagerstatus helt ned på størrelse, og lar deg sette et varsel som sier fra når prisen faller eller størrelsen din dukker opp igjen.</p>
+
+    <h2>Nøytralitet</h2>
+    <p>Sammenligningen sorteres alltid etter laveste pris. Ingen butikk kan kjøpe seg til en bedre plassering. Poenget med Prisløp er å være en uavhengig guide — mister vi det, mister vi alt.</p>
+
+    <div class="card">
+      <h2>Hvordan vi tjener penger</h2>
+      <p>Noen av lenkene til butikkene er annonselenker. Handler du via dem, kan Prisløp få en liten provisjon. Det påvirker verken prisen du betaler eller rekkefølgen i sammenligningen. Vi er åpne om dette fordi tillit er hele forretningsmodellen.</p>
+    </div>
+
+    <h2>En tidlig versjon</h2>
+    <p>Prisløp er ferskt og bygges ut butikk for butikk. Akkurat nå er XXL koblet på med ekte pris- og lagerdata; flere norske butikker kommer fortløpende etter hvert som vi får dem på plass. Ting kan endre seg raskt i denne fasen.</p>
+
+    <h2>Kontakt</h2>
+    <p>Innspill, feil eller spørsmål? Skriv til <a href="mailto:atundal@gmail.com">atundal@gmail.com</a>.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="frow">
+    <span><a href="om.html">Om Prisløp</a> · <a href="personvern.html">Personvern</a> · <a href="index.html">Hjem</a></span>
+    <span style="font-family:var(--mono)">prisløp.no</span>
+  </div>
+</footer>
+</body>
+</html>
