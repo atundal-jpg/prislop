@@ -35,7 +35,7 @@ STORES = {
         "name": "XXL",
         "base": "https://www.xxl.no",
         # VERIFISER: XXL sin søke-URL
-        "search_url": lambda q: f"https://www.xxl.no/search?query={quote_plus(q)}",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
         # Sterk produktmarkør: XXL-produkt-URL-er slutter på /p/<id>_<n>_Style
         "marker_re": re.compile(r"/p/\d+_\d+_Style", re.I),
         "adapter": _xxl,
@@ -44,7 +44,7 @@ STORES = {
         "name": "Torshov Sport",
         "base": "https://www.torshovsport.no",
         # VERIFISER: Torshov (Jetshop) søke-URL
-        "search_url": lambda q: f"https://www.torshovsport.no/search?q={quote_plus(q)}",
+        "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko?list[206:subname][0]=Asics",
         "marker_re": None,   # ingen ren markør -> faller tilbake på token-filter
         "adapter": _torshov,
     },
@@ -52,7 +52,7 @@ STORES = {
         "name": "Intersport",
         "base": "https://www.intersport.no",
         # VERIFISER: Intersport (SportHolding) søke-URL
-        "search_url": lambda q: f"https://www.intersport.no/sok?q={quote_plus(q)}",
+        "search_url": lambda q: "https://www.intersport.no/asics",
         # SportHolding-produkt-slug slutter på Asics-stammen, f.eks. ...-1011b958
         "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
         "adapter": _intersport,
