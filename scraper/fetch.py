@@ -59,3 +59,4 @@ class Fetcher:
             except requests.RequestException:
                 time.sleep(self.delay * attempt)
         return None
+        
