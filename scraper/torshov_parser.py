@@ -19,9 +19,14 @@ from __future__ import annotations
 import json, re
 
 ASICS_CODE_RE = re.compile(r"\b(\d{4}[A-Z]\d{3}-\d{3})\b")
+
+# Kjønn er valgfritt: unisex-titler mangler kjønnsord helt. re.I fordi titler
+# noen ganger kommer i caps (f.eks. «SUPERBLAST 3 ...»).
 NAME_RE = re.compile(
-    r"^(?P<model>.+?)\s+(?:Løpesko|Joggesko|Sko)\s+"
-    r"(?P<gender>Herre|Dame|Unisex|Barn|Junior)\s+(?P<color>.+)$"
+    r"^(?P<model>.+?)\s+(?:Løpesko|Joggesko|Sko)"
+    r"(?:\s+(?P<gender>Herre|Dame|Unisex|Barn|Junior))?"
+    r"\s+(?P<color>.+)$",
+    re.I,
 )
 
 
@@ -42,9 +47,10 @@ def _extract_apollo(html: str) -> dict:
     return json.loads(json.loads(html[oq:k + 1]))
 
 
-def _gender(s: str) -> str:
+def _gender(s: str | None) -> str:
+    # (s or "") gjør None -> "" -> default "unisex" i stedet for å kræsje på .lower()
     return {"herre": "herre", "dame": "dame", "unisex": "unisex",
-            "barn": "barn", "junior": "barn"}.get(s.lower(), "unisex")
+            "barn": "barn", "junior": "barn"}.get((s or "").lower(), "unisex")
 
 
 def parse_torshov(html: str, url: str) -> dict:
