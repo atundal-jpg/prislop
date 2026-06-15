@@ -1,13 +1,15 @@
 """
 discovery.py — finner produkt-URL-er per butikk, og adapterer parser-output.
 
-For hver (butikk, modell): søk på "asics <modell>", hent søkeresultatsiden, og
-plukk ut produktlenkene. Resultatet mates videre til riktig parser.
+For hver (butikk, modell): hent kilde-URL (kategori- eller søkeside), og plukk
+ut produktlenkene. Resultatet mates videre til riktig parser.
 
-⚠️  VERIFISER MOT LIVE SIDE: søke-URL-malene (`search_url`) og produktlenke-
-    markørene (`marker_re`) er kvalifiserte gjetninger. De kan ikke testes uten
-    å nå butikkene, så dette er det første som må finjusteres når pipelinen
-    kjører i Actions. Alt annet (henting, parsing, lasting) er testet.
+URL-status (verifisert mot live sider juni 2026):
+- XXL: kategoriside funker, MEN produktlenkene ligger i __NEXT_DATA__-JSON, ikke
+  som href. discover() under finner derfor 0 for XXL inntil vi parser JSON.  TODO.
+- Torshov: kategoriside, produktlenker som href -> token-filter per modell. OK.
+- Intersport: /asics er DØD (404). Bruker søke-endepunktet /search?query=...&tab=products
+  som rendrer produktlenker som href, per modell. OK.
 """
 
 from __future__ import annotations
@@ -34,27 +36,31 @@ STORES = {
     "xxl": {
         "name": "XXL",
         "base": "https://www.xxl.no",
-        # VERIFISER: XXL sin søke-URL
-                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
-        # Sterk produktmarkør: XXL-produkt-URL-er slutter på /p/<id>_<n>_Style
+        # Kategoriside (Asics, herre). q ignoreres. NB: produktlenkene ligger i
+        # __NEXT_DATA__, ikke som href -> discover() må parse JSON (ikke løst ennå).
+        "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
+        # XXL-produkt-URL-er slutter på /p/<id>_<n>_Style
         "marker_re": re.compile(r"/p/\d+_\d+_Style", re.I),
         "adapter": _xxl,
     },
     "torshov": {
         "name": "Torshov Sport",
         "base": "https://www.torshovsport.no",
-        # VERIFISER: Torshov (Jetshop) søke-URL
+        # Kategoriside (Asics). q ignoreres. Produktlenker ligger som href.
         "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko?list[206:subname][0]=Asics",
-        "marker_re": None,   # ingen ren markør -> faller tilbake på token-filter
+        "marker_re": None,   # ingen ren markør -> faller tilbake på token-filter (per modell)
         "adapter": _torshov,
     },
     "intersport": {
         "name": "Intersport",
         "base": "https://www.intersport.no",
-        # VERIFISER: Intersport (SportHolding) søke-URL
-        "search_url": lambda q: "https://www.intersport.no/asics",
+        # Søke-endepunktet (per modell). /asics er død. Dette rendrer href.
+        "search_url": lambda q: f"https://www.intersport.no/search?query={quote_plus(q)}&tab=products",
         # SportHolding-produkt-slug slutter på Asics-stammen, f.eks. ...-1011b958
         "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        # Markøren matcher HVILKEN SOM HELST Asics-kode -> uten dette låses vi på 6.
+        # Krev derfor modell-token i tillegg, slik Torshov gjør implisitt.
+        "require_model_match": True,
         "adapter": _intersport,
     },
 }
@@ -91,7 +97,14 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         if not url.startswith(cfg["base"]):
             continue
         marker = cfg.get("marker_re")
-        ok = marker.search(url) if marker else _looks_like_product(url, brand, model)
+        if marker:
+            ok = bool(marker.search(url))
+            # Markør alene kan være for løs (matcher alle merkets produkter).
+            # Krev da også modell-token, så limit gjelder per modell.
+            if ok and cfg.get("require_model_match"):
+                ok = _looks_like_product(url, brand, model)
+        else:
+            ok = _looks_like_product(url, brand, model)
         if ok and url not in seen:
             seen.add(url)
             out.append(url)
