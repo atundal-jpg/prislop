@@ -46,10 +46,13 @@ def norm_gender(g: str) -> str:
 
 def norm_model(model: str) -> str:
     """Kanonisk, sammenlignbar modellstreng: lower, samlede skilletegn,
-    og legg på 'gel-' der en bar Asics-linje er skrevet uten det."""
+    foren Gore-Tex/GTX, og legg på 'gel-' der en bar Asics-linje mangler det."""
     m = (model or "").lower()
     m = re.sub(r"[\-/]", " ", m)
     m = re.sub(r"\s+", " ", m).strip()
+    # Gore-Tex == GTX: butikker veksler mellom skrivemåtene (XXL: "Gore-Tex",
+    # Intersport/seed: "GTX"). Foren til "gtx" så samme sko matcher på tvers.
+    m = re.sub(r"\bgore\s?tex\b", "gtx", m)
     toks = m.split(" ")
     # "nimbus 27" -> "gel-nimbus 27"
     if toks and toks[0] in _GEL_LINES:
