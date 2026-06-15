@@ -43,9 +43,11 @@ class Fetcher:
         for attempt in range(1, self.retries + 1):
             self._throttle()
             try:
-                r = self.s.get(url, timeout=TIMEOUT)
-                if r.status_code == 200:
-                    return r.text
+              r = self.s.get(url, timeout=TIMEOUT)
+            if r.status_code == 200:
+                r.encoding = "utf-8"
+                return r.text
+
                 if r.status_code in (429, 503):       # rate-limited -> backoff
                     time.sleep(self.delay * 2 ** attempt)
                     continue
