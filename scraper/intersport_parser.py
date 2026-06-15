@@ -20,6 +20,21 @@ import re, json
 LD_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S)
 VIDEOLY_ID_RE = re.compile(r'videoly-product-id"[^>]*>\s*asics-([0-9a-z]+)-(.+?)-(\d+)_', re.I)
 
+# Noen (ofte eldre) produkter har kategori-ordene med i JSON-LD-navnet, f.eks.
+# "GT-2000 12 løpesko herre". Strip dem så modellnavnet blir rent ("GT-2000 12").
+_MODEL_SUFFIX_RE = re.compile(
+    r"^(?P<model>.*?)\s+(?:terreng)?(?:løpesko|joggesko|sko)"
+    r"(?:\s+(?:herre|dame|unisex|barn|junior))?\s*$",
+    re.I,
+)
+
+
+def _clean_model(name: str | None) -> str | None:
+    if not name:
+        return name
+    m = _MODEL_SUFFIX_RE.match(name)
+    return m.group("model").strip() if m else name.strip()
+
 
 def _gender_from_url(url: str) -> str:
     u = (url or "").lower()
@@ -67,7 +82,7 @@ def parse_intersport(html: str, url: str = "") -> dict:
         offer = offer[0] if offer else {}
 
     brand = (product_ld.get("brand") or {}).get("name") if isinstance(product_ld.get("brand"), dict) else product_ld.get("brand")
-    model = product_ld.get("name")
+    model = _clean_model(product_ld.get("name"))
     ld_url = offer.get("url") or url
 
     # 2) Videoly-div -> colorway-kode + fargenavn
