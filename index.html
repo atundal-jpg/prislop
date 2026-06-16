@@ -1,18 +1,20 @@
-<!DOCTYPE html>
-<html lang="no">
+<!doctype html>
+<html lang="nb">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Prisløp — sammenlign priser på løpesko</title>
-<meta name="description" content="Prisløp sammenligner priser på løpesko fra norske nettbutikker, viser hvilke størrelser som faktisk er på lager, og varsler deg ved prisfall." />
+<title>Prisløp — følg prisen på løpesko</title>
+<meta name="description" content="Prisløp følger prisutviklingen på løpesko fra norske nettbutikker, viser hvilke størrelser som faktisk er på lager, og varsler deg når prisen faller." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --paper:#F4F5F1; --ink:#13151A; --muted:#666C75; --line:#E2E3DB;
-    --track:#173A5E; --track-soft:#E7EEF4; --signal:#FF4A2E; --signal-soft:#FFE7E1;
-    --ok:#157A4B; --ok-soft:#E2F1E9;
+    --paper:#F3F5F3; --ink:#16211F; --muted:#5E6B66; --line:#E1E6E2;
+    --petrol:#136E68; --petrol-soft:#E1EDEB;      /* nordisk blågrønn — merke + struktur */
+    --honey:#BC7A1E;  --honey-soft:#F5E8D2;       /* varm aksent — lavest pris / prisdipp */
+    --ok:#2C7A55;     --ok-soft:#E3F0E9;          /* størrelse på lager */
+    --warn:#B0402F;   --warn-soft:#F3E1DC;        /* feil */
     --disp:'Space Grotesk',system-ui,sans-serif;
     --body:'Inter',system-ui,sans-serif;
     --mono:'Space Mono',ui-monospace,monospace;
@@ -30,73 +32,104 @@
   /* top bar */
   header{border-bottom:1px solid var(--line)}
   .bar{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .logo{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:-.03em;display:flex;align-items:center;gap:9px}
-  .logo .dot{width:11px;height:11px;border-radius:50%;background:var(--signal);box-shadow:14px 0 0 -2px var(--track),28px 0 0 -4px var(--muted)}
+  .logo{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:-.03em;display:flex;align-items:center;gap:10px;color:var(--ink)}
+  .logo svg{display:block;overflow:visible}
   .bar nav a{font-size:14px;color:var(--muted);text-decoration:none;margin-left:22px}
-  .bar nav a:hover{color:var(--ink)}
+  .bar nav a:hover{color:var(--petrol)}
 
-  /* hero */
+  /* hero with price-line signature */
   .hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
-  .lanes{position:absolute;inset:0;background-image:repeating-linear-gradient(90deg,transparent 0 calc(12.5% - 1px),var(--line) calc(12.5% - 1px) 12.5%);opacity:.55;pointer-events:none}
+  .chart{position:absolute;left:0;right:0;bottom:0;height:64%;pointer-events:none}
+  .chart svg{width:100%;height:100%}
+  .chart .area{fill:var(--petrol-soft);opacity:.55}
+  .chart .grid{stroke:var(--line);stroke-width:1}
+  .chart .line{stroke:var(--petrol);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.5;
+    stroke-dasharray:1500;animation:draw 1.7s ease-out forwards}
+  .chart .guide{stroke:var(--honey);stroke-width:1.4;stroke-dasharray:3 5;opacity:.55}
+  .chart .ring{fill:none;stroke:var(--honey);stroke-width:2;opacity:.5}
+  .chart .mark{fill:var(--honey)}
+  @keyframes draw{from{stroke-dashoffset:1500}to{stroke-dashoffset:0}}
   .hero .wrap{position:relative;padding:84px 24px 76px}
   .hero h1{font-size:clamp(40px,7vw,76px)}
-  .hero h1 em{font-style:normal;color:var(--signal)}
-  .hero p.lede{max-width:50ch;margin:22px 0 0;font-size:clamp(17px,2.2vw,21px);color:#2b2f37}
+  .hero h1 em{font-style:normal;color:var(--honey)}
+  .hero p.lede{max-width:50ch;margin:22px 0 0;font-size:clamp(17px,2.2vw,21px);color:#2b332f}
   .hero .meta{margin-top:30px;display:flex;flex-wrap:wrap;gap:10px}
-  .pill{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;color:#2b2f37}
-  .pill b{color:var(--track)}
+  .pill{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;color:#2b332f}
+  .pill b{color:var(--petrol)}
 
   /* section */
   section{padding:64px 0}
-  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap}
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
   .sec-head h2{font-size:clamp(24px,3.4vw,34px)}
 
-  /* product / leaderboard */
-  .product{border:1px solid var(--line);background:#fff;border-radius:18px;overflow:hidden}
-  .p-top{display:flex;gap:22px;align-items:flex-start;padding:26px 26px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .shoe{flex:0 0 96px;height:96px;border-radius:14px;background:var(--track-soft);display:grid;place-items:center}
-  .p-id{flex:1;min-width:220px}
-  .p-id .brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  .p-id h3{font-size:clamp(22px,3vw,30px);margin-top:4px}
-  .p-id .sub{color:var(--muted);font-size:14.5px;margin-top:6px}
-  .from{ text-align:right}
-  .from .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  .from .val{font-family:var(--disp);font-weight:700;font-size:30px;letter-spacing:-.02em}
-  .from .val span{font-size:15px;color:var(--muted);font-weight:500}
+  /* controls */
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .search{flex:1;min-width:240px;position:relative}
+  .search input{width:100%;font-family:var(--body);font-size:16px;padding:13px 14px 13px 42px;
+    border:1px solid var(--line);border-radius:12px;background:#fff}
+  .search svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted)}
+  .sel{font-family:var(--mono);font-size:13px;color:#2b332f;background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;appearance:none;cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235E6B66' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 12px center;padding-right:34px}
+  .search input:focus-visible,.sel:focus-visible{outline:2.5px solid var(--petrol);outline-offset:1px;border-color:var(--petrol)}
+  .countrow{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin:4px 2px 22px}
+  .reset{background:none;border:0;color:var(--petrol);font-family:var(--mono);font-size:12.5px;cursor:pointer;padding:0 0 0 8px;text-decoration:underline}
 
-  /* lanes / stores */
-  .stores{padding:8px 0}
-  .store{display:grid;grid-template-columns:26px 1fr auto auto;align-items:center;gap:14px;padding:15px 26px;border-top:1px solid var(--line)}
+  /* product list */
+  .list{display:flex;flex-direction:column;gap:16px}
+  .product{border:1px solid var(--line);background:#fff;border-radius:18px;overflow:hidden}
+  .p-head{all:unset;display:block;width:100%;cursor:pointer}
+  .p-head:focus-visible{outline:2.5px solid var(--petrol);outline-offset:-2px}
+  .p-top{display:flex;gap:22px;align-items:center;padding:22px 24px;flex-wrap:wrap}
+  .product.open .p-top{border-bottom:1px solid var(--line)}
+  .shoe{flex:0 0 72px;height:72px;border-radius:14px;background:var(--petrol-soft);display:grid;place-items:center}
+  .p-id{flex:1;min-width:200px}
+  .p-id .brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .p-id h3{font-size:clamp(19px,2.5vw,25px);margin-top:3px}
+  .p-id .sub{color:var(--muted);font-size:14px;margin-top:6px}
+  .from{text-align:right}
+  .from .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .from .val{font-family:var(--disp);font-weight:700;font-size:27px;letter-spacing:-.02em}
+  .from .val span{font-size:14px;color:var(--muted);font-weight:500}
+  .chev{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);
+    display:grid;place-items:center;color:var(--muted);transition:transform .18s ease,background .18s,color .18s}
+  .product.open .chev{transform:rotate(180deg);background:var(--petrol-soft);color:var(--petrol);border-color:var(--petrol-soft)}
+
+  .p-body{display:none}
+  .product.open .p-body{display:block}
+
+  /* stores */
+  .stores{padding:6px 0}
+  .store{display:grid;grid-template-columns:26px 1fr auto auto;align-items:center;gap:14px;padding:14px 24px;border-top:1px solid var(--line)}
   .store:first-child{border-top:0}
   .store .rank{font-family:var(--mono);font-size:13px;color:var(--muted)}
-  .store .nm{font-weight:600;font-size:17px;display:flex;align-items:center;gap:9px}
+  .store .nm{font-weight:600;font-size:16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .store .nm .cw{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;letter-spacing:.04em}
   .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
-  .tag.best{background:var(--signal);color:#fff}
-  .tag.soon{background:var(--track-soft);color:var(--track)}
+  .tag.best{background:var(--honey);color:#fff}
+  .tag.oos{background:var(--line);color:var(--muted)}
   .store .price{font-family:var(--mono);font-weight:700;font-size:18px}
-  .store .price.muted{color:var(--muted);font-weight:400;font-size:13px}
-  .store .go{font-family:var(--mono);font-size:13px;text-decoration:none;border:1px solid var(--ink);border-radius:8px;padding:7px 12px;white-space:nowrap}
-  .store .go:hover{background:var(--ink);color:#fff}
-  .store.pending{opacity:.62}
-  .store.pending .nm{font-weight:500}
+  .store .go{font-family:var(--mono);font-size:13px;text-decoration:none;border:1px solid var(--petrol);color:var(--petrol);border-radius:8px;padding:7px 12px;white-space:nowrap}
+  .store .go:hover{background:var(--petrol);color:#fff}
 
   /* size board */
-  .sizes{padding:24px 26px 28px;border-top:1px solid var(--line);background:#FCFCFB}
+  .sizes{padding:22px 24px 26px;border-top:1px solid var(--line);background:#FBFCFB}
   .sizes .row-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
   .sizes h4{font-family:var(--disp);font-weight:600;font-size:16px;margin:0}
   .sizes .hint{font-size:13px;color:var(--muted)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px}
   .chip{appearance:none;font-family:var(--mono);font-size:14px;cursor:pointer;border:1px solid var(--line);
-    background:#fff;border-radius:10px;padding:11px 4px;text-align:center;position:relative;transition:transform .08s ease,border-color .12s ease}
+    background:#fff;border-radius:10px;padding:11px 4px;text-align:center;transition:transform .08s ease,border-color .12s ease}
   .chip .n{display:block;font-weight:700}
   .chip .s{display:block;font-size:9.5px;letter-spacing:.06em;margin-top:3px;color:var(--muted)}
   .chip.avail{border-color:var(--ok);background:var(--ok-soft)}
   .chip.avail .s{color:var(--ok)}
-  .chip.out{color:#A9AEB5}
+  .chip.out{color:#A9AEB5;cursor:default}
   .chip.out .n{text-decoration:line-through;text-decoration-thickness:1.5px}
   .chip:hover:not(.out){transform:translateY(-2px)}
-  .chip.sel{outline:2.5px solid var(--track);outline-offset:1px;border-color:var(--track)}
-  .chip:focus-visible{outline:2.5px solid var(--track);outline-offset:1px}
+  .chip.sel{outline:2.5px solid var(--petrol);outline-offset:1px;border-color:var(--petrol)}
+  .chip:focus-visible{outline:2.5px solid var(--petrol);outline-offset:1px}
 
   /* status + alert */
   .statusbar{margin-top:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -104,29 +137,46 @@
   .statusbar .txt{font-size:14.5px;flex:1;min-width:180px}
   .statusbar .txt b{font-family:var(--mono)}
   .btn{appearance:none;cursor:pointer;font-family:var(--disp);font-weight:600;font-size:14.5px;
-    border:0;border-radius:10px;padding:11px 18px;background:var(--signal);color:#fff;transition:filter .12s}
-  .btn:hover{filter:brightness(1.06)}
+    border:0;border-radius:10px;padding:11px 18px;background:var(--petrol);color:#fff;transition:filter .12s}
+  .btn:hover{filter:brightness(1.07)}
   .btn[disabled]{background:var(--line);color:var(--muted);cursor:not-allowed}
   .alertform{margin-top:14px;display:none;gap:10px;flex-wrap:wrap;align-items:center}
   .alertform.show{display:flex}
   .alertform input{font-family:var(--body);font-size:15px;padding:11px 14px;border:1px solid var(--line);
-    border-radius:10px;flex:1;min-width:200px;background:#fff}
-  .alertform input:focus-visible{outline:2.5px solid var(--track);outline-offset:1px;border-color:var(--track)}
+    border-radius:10px;background:#fff}
+  .alertform input.email{flex:1;min-width:200px}
+  .alertform input.price{width:120px}
+  .alertform input:focus-visible{outline:2.5px solid var(--petrol);outline-offset:1px;border-color:var(--petrol)}
   .confirm{display:none;margin-top:12px;font-size:14px;color:var(--ok);background:var(--ok-soft);
     border:1px solid #BFE3D0;border-radius:10px;padding:12px 14px}
   .confirm.show{display:block}
+  .confirm.err{color:var(--warn);background:var(--warn-soft);border-color:#E6BFB6}
   .confirm .fine{display:block;color:var(--muted);margin-top:3px;font-size:12.5px}
+
+  /* states */
+  .state{border:1px dashed var(--line);border-radius:16px;padding:40px 24px;text-align:center;color:var(--muted);background:#fff}
+  .state h3{font-family:var(--disp);font-size:19px;color:var(--ink);margin-bottom:6px}
+  .state .btn{margin-top:16px}
+  .skel{height:104px;border:1px solid var(--line);border-radius:18px;background:
+    linear-gradient(100deg,#fff 30%,#F1F3F1 50%,#fff 70%);background-size:200% 100%;animation:sh 1.2s infinite}
+  @keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
 
   /* how it works */
   .how{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
   .how .card{border:1px solid var(--line);background:#fff;border-radius:14px;padding:22px}
-  .how .ic{width:34px;height:34px;color:var(--track);margin-bottom:14px}
+  .how .ic{width:34px;height:34px;color:var(--petrol);margin-bottom:14px}
   .how h3{font-family:var(--disp);font-size:18px;font-weight:600;margin-bottom:7px}
-  .how p{margin:0;font-size:14.5px;color:#444a52}
+  .how p{margin:0;font-size:14.5px;color:#444a47}
+
+  /* auth toast */
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:var(--ink);color:#fff;font-size:14.5px;padding:13px 18px;border-radius:12px;
+    box-shadow:0 8px 30px rgba(0,0,0,.18);transition:opacity .25s,transform .25s;z-index:50;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   /* footer */
   footer{border-top:1px solid var(--line);padding:40px 0 56px;color:var(--muted);font-size:13.5px}
-  footer .disc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:24px;color:#444a52;max-width:62ch}
+  footer .disc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:24px;color:#444a47;max-width:62ch}
   footer .disc b{color:var(--ink)}
   footer .frow{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
 
@@ -135,14 +185,21 @@
     .store .go{grid-column:2 / -1;justify-self:start}
     .how{grid-template-columns:1fr}
     .from{text-align:left}
+    .p-top{gap:14px}
   }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
 <header>
   <div class="wrap bar">
-    <div class="logo"><span class="dot"></span>Prisløp</div>
+    <div class="logo">
+      <svg width="28" height="20" viewBox="0 0 28 20" fill="none" aria-hidden="true">
+        <polyline points="1,4 7,9 13,5.5 19,12.5 24.5,17" stroke="#136E68" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.5" cy="17" r="3" fill="#BC7A1E"/>
+      </svg>
+      Prisløp
+    </div>
     <nav>
       <a href="#sammenlign">Sammenlign</a>
       <a href="#slik">Slik funker det</a>
@@ -151,15 +208,24 @@
 </header>
 
 <div class="hero">
-  <div class="lanes" aria-hidden="true"></div>
+  <div class="chart" aria-hidden="true">
+    <svg viewBox="0 0 1200 300" preserveAspectRatio="none">
+      <line class="grid" x1="0" y1="90" x2="1200" y2="90"/>
+      <line class="grid" x1="0" y1="160" x2="1200" y2="160"/>
+      <line class="grid" x1="0" y1="230" x2="1200" y2="230"/>
+      <path class="area" d="M0,78 C120,44 210,150 330,124 C450,98 520,206 660,178 C800,150 904,250 1020,232 C1100,221 1158,236 1200,234 L1200,300 L0,300 Z"/>
+      <path class="line" d="M0,78 C120,44 210,150 330,124 C450,98 520,206 660,178 C800,150 904,250 1020,232 C1100,221 1158,236 1200,234"/>
+      <line class="guide" x1="1020" y1="232" x2="1020" y2="300"/>
+      <circle class="ring" cx="1020" cy="232" r="11"/>
+      <circle class="mark" cx="1020" cy="232" r="5.5"/>
+    </svg>
+  </div>
   <div class="wrap">
     <p class="eyebrow">Løpesko · norske nettbutikker</p>
-    <h1>La butikkene<br>løpe om <em>prisen</em>.</h1>
-    <p class="lede">Prisløp samler prisene på løpesko fra norske nettbutikker på ett sted — og viser deg det de fleste sider skjuler: hvilke <strong>størrelser som faktisk er på lager</strong>. Velg sko og størrelse, så sier vi fra når prisen faller eller størrelsen er tilbake.</p>
-    <div class="meta">
-      <span class="pill">Butikker tilkoblet: <b>1</b> / 7</span>
-      <span class="pill">Størrelsesnivå lager <b>✓</b></span>
-      <span class="pill">Prisvarsel <b>✓</b></span>
+    <h1>Følg prisen<br><em>helt ned.</em></h1>
+    <p class="lede">Prisløp samler prisene på løpesko fra norske nettbutikker, viser hvilke <strong>størrelser som faktisk er på lager</strong>, og følger prisløpet for deg. Velg sko og størrelse, så sier vi fra idet prisen faller dit du vil ha den.</p>
+    <div class="meta" id="herostats">
+      <span class="pill">Laster katalog …</span>
     </div>
   </div>
 </div>
@@ -167,50 +233,27 @@
 <section id="sammenlign">
   <div class="wrap">
     <div class="sec-head">
-      <h2>Dagens sammenligning</h2>
-      <span class="eyebrow" id="updated"></span>
+      <h2>Sammenlign løpesko</h2>
+      <span class="eyebrow">Oppdateres hver 6. time</span>
     </div>
 
-    <div class="product">
-      <div class="p-top">
-        <div class="shoe" aria-hidden="true">
-          <svg width="58" height="58" viewBox="0 0 64 64" fill="none">
-            <path d="M5 41c0-3 2-5 6-6 6-1 9-4 13-9 3-4 6-6 9-5 2 1 2 3 1 6 4-1 9 0 15 3 6 3 9 6 9 10 0 3-2 4-6 4H9c-3 0-4-1-4-3z" fill="#173A5E"/>
-            <path d="M7 44h49" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="20" cy="34" r="1.6" fill="#FF4A2E"/><circle cx="27" cy="30" r="1.6" fill="#FF4A2E"/>
-          </svg>
-        </div>
-        <div class="p-id">
-          <div class="brand">Asics</div>
-          <h3>Gel-Nimbus 27</h3>
-          <div class="sub">Herre · nøytral · dropp 8 mm · vekt 305 g</div>
-        </div>
-        <div class="from">
-          <div class="lbl">Lavest nå</div>
-          <div class="val">1 539&nbsp;<span>kr</span></div>
-        </div>
-      </div>
-
-      <div class="stores" id="stores"></div>
-
-      <div class="sizes">
-        <div class="row-head">
-          <h4>Størrelser hos XXL</h4>
-          <span class="hint">Grønt = på lager · velg din størrelse for varsel</span>
-        </div>
-        <div class="grid" id="grid"></div>
-
-        <div class="statusbar">
-          <div class="txt" id="statustxt">Velg en størrelse for å se status og sette varsel.</div>
-          <button class="btn" id="alertbtn" disabled>Varsle meg</button>
-        </div>
-        <form class="alertform" id="alertform" autocomplete="off">
-          <input type="email" id="email" placeholder="din@epost.no" required aria-label="E-post for varsel" />
-          <button class="btn" type="submit">Sett varsel</button>
-        </form>
-        <div class="confirm" id="confirm"></div>
-      </div>
+    <div class="controls">
+      <label class="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" id="q" placeholder="Søk etter modell, f.eks. Nimbus" aria-label="Søk etter modell" autocomplete="off" />
+      </label>
+      <select class="sel" id="f-brand" aria-label="Filtrer på merke"><option value="">Alle merker</option></select>
+      <select class="sel" id="f-gender" aria-label="Filtrer på kjønn"><option value="">Alle kjønn</option></select>
+      <select class="sel" id="f-size" aria-label="Filtrer på størrelse"><option value="">Alle størrelser</option></select>
+      <select class="sel" id="f-sort" aria-label="Sortering">
+        <option value="price">Laveste pris</option>
+        <option value="stores">Flest butikker</option>
+        <option value="name">Modell A–Å</option>
+      </select>
     </div>
+    <div class="countrow" id="countrow" aria-live="polite"></div>
+
+    <div class="list" id="products"></div>
   </div>
 </section>
 
@@ -229,9 +272,9 @@
         <p>De fleste viser bare om skoen finnes. Vi viser om akkurat din størrelse er inne — per butikk, oppdatert jevnlig.</p>
       </div>
       <div class="card">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
-        <h3>Varsel når det teller</h3>
-        <p>Sett en grense på prisen eller en størrelse du venter på. Vi sier fra på e-post idet den faller eller dukker opp igjen.</p>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-5 4 3 6-7"/><path d="M21 7v5h-5"/></svg>
+        <h3>Vi følger prisløpet</h3>
+        <p>Sett en grense på prisen, eller en størrelse du venter på. Vi holder øye med prisen og sier fra på e-post idet den faller dit — eller dukker opp igjen.</p>
       </div>
     </div>
   </div>
@@ -252,93 +295,305 @@
   </div>
 </footer>
 
+<div class="toast" id="toast" role="status"></div>
+
 <script>
-/* Ekte data hentet fra XXL sin produktside (Gel-Nimbus 27, herre, gul). */
-const PRODUCT = {
-  sizes: [
-    {size:"39",a:false},{size:"39.5",a:false},{size:"40",a:false},{size:"40.5",a:false},
-    {size:"41.5",a:false},{size:"42",a:false},{size:"42.5",a:false},{size:"43.5",a:false},
-    {size:"44",a:false},{size:"44.5",a:true,stock:12},{size:"45",a:false},{size:"46",a:false},
-    {size:"46.5",a:true,stock:6},{size:"47",a:false},{size:"48",a:false},{size:"48.5",a:false},
-    {size:"49",a:false},{size:"50.5",a:false},{size:"51.5",a:false}
-  ],
-  stores: [
-    {name:"XXL", price:1539, live:true, url:"https://www.xxl.no/asics-gel-nimbus-27-lopesko-herre-gul/p/1246154_1_Style"},
-    {name:"Get Inspired", live:false},
-    {name:"Sport 1", live:false},
-    {name:"Anton Sport", live:false}
-  ]
-};
+/* ============================================================
+   Prisløp — forside. Henter live fra Supabase public-views.
+   Datalaget er samlet i fetchProducts/fetchOffers/fetchSizes,
+   som i dag filtrerer klient-side, men kan flyttes server-side
+   (PostgREST-filtre + paginering) når katalogen vokser.
+   ============================================================ */
+const SB_URL = "https://agmhjcskkjtnwmhzzckx.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbWhqY3Nra2p0bndtaHp6Y2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNzY3MjEsImV4cCI6MjA5NTc1MjcyMX0.vBxN6_kLO7BCFMDj0jKZzX2eAteIPoCXcPsk9r6L-Lc";
+const REST = SB_URL + "/rest/v1/";
+const HEADERS = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
 
-let selected = null;
+const STORE_NAMES = { xxl:"XXL", torshov:"Torshov Sport", intersport:"Intersport",
+  getinspired:"Get Inspired", anton:"Anton Sport", sport1:"Sport 1", zalando:"Zalando" };
+const storeName = s => STORE_NAMES[s] || (s ? s[0].toUpperCase()+s.slice(1) : "Butikk");
+const nok = n => new Intl.NumberFormat("nb-NO").format(Math.round(Number(n)));
+const cap = s => s ? s[0].toUpperCase()+s.slice(1) : "";
+const sizeNum = s => parseFloat(String(s).replace(",", ".")) || 0;
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-// leaderboard
-const storesEl = document.getElementById('stores');
-const live = PRODUCT.stores.filter(s=>s.live).sort((a,b)=>a.price-b.price);
-const pending = PRODUCT.stores.filter(s=>!s.live);
-storesEl.innerHTML = live.map((s,i)=>`
-  <div class="store">
-    <span class="rank">${i+1}</span>
-    <span class="nm">${s.name} ${i===0?'<span class="tag best">Lavest</span>':''}</span>
-    <span class="price">${s.price.toLocaleString('nb-NO')} kr</span>
-    <a class="go" href="${s.url}" target="_blank" rel="nofollow sponsored noopener">Til butikk →</a>
-  </div>`).join('') + pending.map(s=>`
-  <div class="store pending">
-    <span class="rank">·</span>
-    <span class="nm">${s.name} <span class="tag soon">Kobles til</span></span>
-    <span class="price muted">venter på feed</span>
-    <span></span>
-  </div>`).join('');
+async function api(qs){
+  const r = await fetch(REST + qs, { headers: HEADERS });
+  if(!r.ok) throw new Error("Supabase " + r.status);
+  return r.json();
+}
 
-// size board
-const grid = document.getElementById('grid');
-PRODUCT.sizes.forEach(sz=>{
-  const b=document.createElement('button');
-  b.className='chip '+(sz.a?'avail':'out');
-  b.type='button';
-  b.innerHTML=`<span class="n">${sz.size}</span><span class="s">${sz.a?'på lager':'utsolgt'}</span>`;
-  b.setAttribute('aria-label',`Størrelse ${sz.size}, ${sz.a?'på lager hos XXL':'utsolgt hos XXL'}`);
-  b.addEventListener('click',()=>selectSize(sz,b));
-  grid.appendChild(b);
-});
+/* ---- datalag (bytt internt til server-side filtre ved skalering) ---- */
+async function fetchProducts(){ return api("v_prislop_products?select=*&order=brand.asc,model.asc"); }
+async function fetchOffers(pid){ return api("v_prislop_offers?product_id=eq."+pid+"&order=price.asc"); }
+async function fetchSizes(pid){ return api("v_prislop_sizes?product_id=eq."+pid); }
+async function productIdsWithSize(size){
+  const rows = await api("v_prislop_sizes?select=product_id&in_stock=is.true&size_label=eq."+encodeURIComponent(size));
+  return new Set(rows.map(r => r.product_id));
+}
 
-const statustxt=document.getElementById('statustxt');
-const alertbtn=document.getElementById('alertbtn');
-const alertform=document.getElementById('alertform');
-const confirmEl=document.getElementById('confirm');
+/* ---- state ---- */
+let PRODUCTS = [];
+const offerCache = {}, sizeCache = {}, sizeFilterCache = {};
+const filters = { q:"", brand:"", gender:"", size:"", sort:"price" };
 
-function selectSize(sz,el){
-  selected=sz;
-  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-  alertform.classList.remove('show'); confirmEl.classList.remove('show');
-  alertbtn.disabled=false;
-  if(sz.a){
-    statustxt.innerHTML=`Str <b>${sz.size}</b> er på lager hos XXL (${sz.stock} igjen). Sett varsel hvis du vil vite om prisen faller.`;
-    alertbtn.textContent='Varsle ved prisfall';
-  }else{
-    statustxt.innerHTML=`Str <b>${sz.size}</b> er utsolgt hos XXL. Få varsel når den er tilbake på lager.`;
-    alertbtn.textContent='Varsle når tilbake';
+const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
+  + '<path d="M5 41c0-3 2-5 6-6 6-1 9-4 13-9 3-4 6-6 9-5 2 1 2 3 1 6 4-1 9 0 15 3 6 3 9 6 9 10 0 3-2 4-6 4H9c-3 0-4-1-4-3z" fill="#136E68"/>'
+  + '<path d="M7 44h49" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
+  + '<circle cx="20" cy="34" r="1.6" fill="#BC7A1E"/><circle cx="27" cy="30" r="1.6" fill="#BC7A1E"/></svg>';
+
+const el = id => document.getElementById(id);
+
+async function init(){
+  handleAuthCallback();
+  el("products").innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  try{
+    PRODUCTS = await fetchProducts();
+  }catch(e){
+    el("products").innerHTML = '<div class="state"><h3>Får ikke kontakt med katalogen</h3>'
+      + '<p>Noe gikk galt da vi hentet prisene. Sjekk nettforbindelsen og prøv igjen.</p>'
+      + '<button class="btn" onclick="init()">Prøv på nytt</button></div>';
+    el("herostats").innerHTML = '';
+    return;
+  }
+  buildFilterOptions();
+  await buildHeroStats();
+  bindControls();
+  render();
+}
+
+async function buildHeroStats(){
+  let stores = 0;
+  try{
+    const rows = await api("v_prislop_offers?select=store");
+    stores = new Set(rows.map(r => r.store)).size;
+  }catch(e){ stores = 0; }
+  el("herostats").innerHTML =
+      '<span class="pill"><b>'+PRODUCTS.length+'</b> løpesko-modeller</span>'
+    + '<span class="pill">Butikker tilkoblet: <b>'+(stores||"–")+'</b> / 7</span>'
+    + '<span class="pill">Størrelsesnivå lager <b>✓</b></span>';
+}
+
+function buildFilterOptions(){
+  const brands = [...new Set(PRODUCTS.map(p => p.brand).filter(Boolean))].sort();
+  el("f-brand").insertAdjacentHTML("beforeend",
+    brands.map(b => '<option value="'+esc(b)+'">'+esc(b)+'</option>').join(""));
+  const genders = [...new Set(PRODUCTS.map(p => p.gender).filter(Boolean))].sort();
+  el("f-gender").insertAdjacentHTML("beforeend",
+    genders.map(g => '<option value="'+esc(g)+'">'+esc(cap(g))+'</option>').join(""));
+  fetchSizeOptions();
+}
+async function fetchSizeOptions(){
+  try{
+    const rows = await api("v_prislop_sizes?select=size_label&in_stock=is.true");
+    const sizes = [...new Set(rows.map(r => r.size_label).filter(Boolean))].sort((a,b)=>sizeNum(a)-sizeNum(b));
+    el("f-size").insertAdjacentHTML("beforeend",
+      sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(s)+'</option>').join(""));
+  }catch(e){/* størrelsesfilter valgfritt */}
+}
+
+function bindControls(){
+  let t;
+  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); render(); }, 140); });
+  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; render(); });
+  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; render(); });
+  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; render(); });
+  el("f-size").addEventListener("change", async e => {
+    filters.size = e.target.value;
+    if(filters.size && !sizeFilterCache[filters.size]){
+      try{ sizeFilterCache[filters.size] = await productIdsWithSize(filters.size); }
+      catch(err){ sizeFilterCache[filters.size] = null; }
+    }
+    render();
+  });
+}
+
+function currentList(){
+  let list = PRODUCTS.slice();
+  if(filters.brand)  list = list.filter(p => p.brand === filters.brand);
+  if(filters.gender) list = list.filter(p => p.gender === filters.gender);
+  if(filters.q){
+    list = list.filter(p => ((p.brand||"")+" "+(p.model||"")).toLowerCase().includes(filters.q));
+  }
+  if(filters.size){
+    const ids = sizeFilterCache[filters.size];
+    if(ids) list = list.filter(p => ids.has(p.product_id));
+  }
+  const s = filters.sort;
+  list.sort((a,b) =>
+    s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || (a.from_price||0)-(b.from_price||0)
+    : s==="name" ? String(a.model).localeCompare(String(b.model),"nb")
+    : (a.from_price||0)-(b.from_price||0));
+  return list;
+}
+
+function render(){
+  const list = currentList();
+  const anyFilter = filters.q||filters.brand||filters.gender||filters.size;
+  el("countrow").innerHTML = list.length + (list.length===1?" modell":" modeller")
+    + (anyFilter ? ' <button class="reset" onclick="resetFilters()">nullstill filtre</button>' : "");
+
+  if(!list.length){
+    el("products").innerHTML = '<div class="state"><h3>Ingen treff</h3>'
+      + '<p>Vi fant ingen modeller som passer filtrene. Prøv et bredere søk.</p>'
+      + '<button class="btn" onclick="resetFilters()">Nullstill filtre</button></div>';
+    return;
+  }
+  el("products").innerHTML = list.map(cardHTML).join("");
+}
+
+function cardHTML(p){
+  const sub = [cap(p.gender), plur(p.n_colorways,"farge","farger"),
+               (p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
+               .filter(Boolean).join(" · ");
+  return ''
+  + '<article class="product" data-pid="'+p.product_id+'">'
+  +   '<button class="p-head" aria-expanded="false" onclick="toggle(this)">'
+  +     '<div class="p-top">'
+  +       '<div class="shoe">'+SHOE_SVG+'</div>'
+  +       '<div class="p-id"><div class="brand">'+esc(p.brand)+'</div>'
+  +          '<h3>'+esc(p.model)+'</h3><div class="sub">'+esc(sub)+'</div></div>'
+  +       '<div class="from"><div class="lbl">Lavest nå</div>'
+  +          '<div class="val">'+nok(p.from_price)+'&nbsp;<span>kr</span></div></div>'
+  +       '<div class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'
+  +     '</div>'
+  +   '</button>'
+  +   '<div class="p-body" id="body-'+p.product_id+'"></div>'
+  + '</article>';
+}
+function plur(n,one,many){ n=Number(n)||0; return n+" "+(n===1?one:many); }
+
+async function toggle(btn){
+  const card = btn.closest(".product");
+  const pid = card.dataset.pid;
+  const open = card.classList.toggle("open");
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if(open && !card.dataset.loaded){
+    card.dataset.loaded = "1";
+    const body = el("body-"+pid);
+    body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">Henter butikker og størrelser …</span></div>';
+    try{
+      const [offers, sizes] = await Promise.all([
+        offerCache[pid] || (offerCache[pid] = await fetchOffers(pid)),
+        sizeCache[pid]  || (sizeCache[pid]  = await fetchSizes(pid)),
+      ]);
+      body.innerHTML = storesHTML(offers) + sizesHTML(pid, sizes);
+    }catch(e){
+      body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
+        + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
+      card.dataset.loaded = "";
+    }
   }
 }
 
-alertbtn.addEventListener('click',()=>{
-  if(!selected) return;
-  alertform.classList.toggle('show');
-  if(alertform.classList.contains('show')) document.getElementById('email').focus();
-});
+function storesHTML(offers){
+  if(!offers || !offers.length) return '';
+  const sorted = offers.slice().sort((a,b)=>(a.price||1e9)-(b.price||1e9));
+  const rows = sorted.map((o,i) => {
+    const best = i===0 && o.in_stock!==false;
+    const cw = o.store_color || o.colorway;
+    return '<div class="store">'
+      + '<span class="rank">'+(i+1)+'</span>'
+      + '<span class="nm">'+esc(storeName(o.store))
+      +    (best ? ' <span class="tag best">Lavest</span>' : '')
+      +    (o.in_stock===false ? ' <span class="tag oos">Utsolgt</span>' : '')
+      +    (cw ? ' <span class="cw">'+esc(cw)+'</span>' : '')
+      + '</span>'
+      + '<span class="price">'+nok(o.price)+' kr</span>'
+      + '<a class="go" href="'+esc(o.url)+'" target="_blank" rel="sponsored nofollow noopener">Til '+esc(storeName(o.store))+' →</a>'
+      + '</div>';
+  }).join("");
+  return '<div class="stores">'+rows+'</div>';
+}
 
-alertform.addEventListener('submit',e=>{
-  e.preventDefault();
-  alertform.classList.remove('show');
-  confirmEl.innerHTML=`Notert — varsel for str ${selected.size}.
-    <span class="fine">Dette er en tidlig versjon: varslingen kobles på i løpet av kort tid, og vi lagrer ikke e-posten din ennå.</span>`;
-  confirmEl.classList.add('show');
-});
+function sizesHTML(pid, sizes){
+  const map = new Map();
+  (sizes||[]).forEach(s => {
+    const k = s.size_label; if(!k) return;
+    const cur = map.get(k) || { label:k, inStock:false };
+    if(s.in_stock) cur.inStock = true;
+    map.set(k, cur);
+  });
+  const items = [...map.values()].sort((a,b)=>sizeNum(a.label)-sizeNum(b.label));
+  const grid = items.length ? items.map(it =>
+      '<button class="chip '+(it.inStock?'avail':'out')+'"'
+      + (it.inStock?' onclick="pickSize(this,\''+pid+'\')" data-size="'+esc(it.label)+'"':' disabled')
+      + '><span class="n">'+esc(it.label)+'</span><span class="s">'+(it.inStock?'på lager':'utsolgt')+'</span></button>'
+    ).join("") : '<span class="hint">Ingen størrelsesdata ennå.</span>';
 
-// "updated" stamp
-const d=new Date();
-document.getElementById('updated').textContent='Oppdatert '+d.toLocaleDateString('nb-NO',{day:'2-digit',month:'short'});
+  return '<div class="sizes">'
+    + '<div class="row-head"><h4>Størrelser på lager</h4>'
+    +   '<span class="hint">Grønt = inne nå · velg din størrelse for å følge prisen</span></div>'
+    + '<div class="grid">'+grid+'</div>'
+    + '<div class="statusbar">'
+    +   '<div class="txt" id="st-'+pid+'">Velg en størrelse, så følger vi prisen for akkurat den.</div>'
+    +   '<button class="btn" onclick="openAlert(\''+pid+'\')">Følg pris</button>'
+    + '</div>'
+    + '<form class="alertform" id="af-'+pid+'" autocomplete="off" onsubmit="return submitAlert(event,\''+pid+'\')">'
+    +   '<input class="email" type="email" placeholder="din@epost.no" required aria-label="E-post for varsel" />'
+    +   '<input class="price" type="number" inputmode="numeric" placeholder="maks kr" aria-label="Maks pris" />'
+    +   '<button class="btn" type="submit">Send bekreftelse</button>'
+    + '</form>'
+    + '<div class="confirm" id="cf-'+pid+'"></div>'
+    + '</div>';
+}
+
+function pickSize(btn, pid){
+  btn.closest(".grid").querySelectorAll(".chip.sel").forEach(c=>c.classList.remove("sel"));
+  btn.classList.add("sel");
+  el("st-"+pid).innerHTML = 'Følger størrelse <b>'+esc(btn.dataset.size)+'</b> — vi sier fra ved prisfall eller når den er tilbake.';
+}
+function openAlert(pid){ el("af-"+pid).classList.add("show"); el("af-"+pid).querySelector(".email").focus(); }
+
+async function submitAlert(ev, pid){
+  ev.preventDefault();
+  const form = el("af-"+pid), cf = el("cf-"+pid);
+  const email = form.querySelector(".email").value.trim();
+  cf.className = "confirm show"; cf.textContent = "Sender …";
+  try{
+    await sendMagicLink(email);
+    form.classList.remove("show");
+    cf.className = "confirm show";
+    cf.innerHTML = "Sjekk e-posten din og bekreft lenken, så aktiverer vi varselet."
+      + '<span class="fine">Vi lagrer kun e-posten din og varslene dine — ingenting annet.</span>';
+  }catch(e){
+    cf.className = "confirm show err";
+    cf.textContent = "Klarte ikke å sende bekreftelse akkurat nå. Prøv igjen om litt.";
+  }
+  return false;
+}
+
+async function sendMagicLink(email){
+  const redirect = encodeURIComponent(location.origin + location.pathname);
+  const r = await fetch(SB_URL + "/auth/v1/otp?redirect_to=" + redirect, {
+    method:"POST",
+    headers:{ apikey: SB_KEY, "Content-Type":"application/json" },
+    body: JSON.stringify({ email, create_user:true })
+  });
+  if(!r.ok) throw new Error("auth " + r.status);
+  return true;
+}
+
+function handleAuthCallback(){
+  if(location.hash && location.hash.indexOf("access_token") !== -1){
+    history.replaceState(null, "", location.pathname + location.search);
+    showToast("E-posten din er bekreftet. Vi sier fra når prisen faller.");
+  }
+}
+function showToast(msg){
+  const t = el("toast"); t.textContent = msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 5000);
+}
+
+function resetFilters(){
+  filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
+  el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
+  render();
+}
+window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
+window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=init;
+
+init();
 </script>
 </body>
 </html>
