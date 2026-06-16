@@ -67,6 +67,44 @@ def product_key(brand: str, model: str, gender: str) -> tuple:
     return (norm_brand(brand).lower(), norm_model(model), norm_gender(gender))
 
 
+# --- Visningsnavn (kanonisk casing) ----------------------------------------
+# Skilles fra norm_model: norm_model er match-NØKKELEN (lowercase), mens dette
+# er det PENE navnet som vises i UI-et. Butikkene skriver navnet rotete
+# («GEL-KAYANO 33», «GT-2000 14 Gore-Tex», «Novablast 5 ATC Dame Grå/Sølv»);
+# her får alle samme rene form.
+_CAMEL = {"metaspeed": "MetaSpeed", "fujispeed": "FujiSpeed",
+          "fujisetsu": "FujiSetsu", "metafuji": "MetaFuji"}
+_UPPER = {"gt", "gtx", "atc", "tr", "mt", "ps", "ff", "wmns"}  # tokens som forblir versaler
+
+
+def _cap_token(t: str) -> str:
+    lw = t.lower()
+    if lw in _CAMEL:
+        return _CAMEL[lw]
+    if lw in _UPPER:
+        return t.upper()
+    if any(c.isdigit() for c in t):
+        return t.upper()                      # tall/spec ("2000", "14") — uendret
+    return (t[:1].upper() + t[1:].lower()) if t else t
+
+
+def split_model_gender(model: str) -> tuple[str, str | None]:
+    """Trekk ut kjønnsord som har lekket inn i modellnavnet og kutt der.
+    «Novablast 5 ATC Dame Grå/Sølv» -> ('Novablast 5 ATC', 'dame')."""
+    m = re.search(r"\b(Herre|Dame|Barn|Unisex)\b", model or "", re.I)
+    if m:
+        return model[:m.start()].strip(), m.group(1).lower()
+    return (model or "").strip(), None
+
+
+def canonical_model(model: str) -> str:
+    """Pent visningsnavn: kjønn/farge strippet, Gore-Tex/G-TX -> GTX, riktig casing."""
+    cleaned, _ = split_model_gender(model)
+    s = re.sub(r"\bgore[\s-]?tex\b", "GTX", cleaned, flags=re.I)
+    s = re.sub(r"\bg-tx\b", "GTX", s, flags=re.I)
+    return " ".join("-".join(_cap_token(p) for p in w.split("-")) for w in s.split())
+
+
 # --- Fargevei-/variantoppløsning -------------------------------------------
 
 def colorway_stem(code: str | None) -> str | None:
