@@ -61,9 +61,14 @@ def upsert_store(cur, store: dict) -> int:
 
 
 def upsert_product(cur, rec: dict) -> str:
-    # Kanonisk match-nøkkel forener samme sko på tvers av butikker, selv om
-    # de skriver navnet ulikt ("GEL-NIMBUS 27" vs bare "Nimbus 27").
-    bk, mk, gk = normalize.product_key(rec["brand"], rec["model"], rec["gender"])
+    # Rens modellnavnet: trekk ut kjønn som har lekket inn i navnet (overstyrer
+    # da butikkens kjønnsfelt), og lag et pent visningsnavn. Match-nøkkelen
+    # bygges på det RENSEDE navnet + korrigert kjønn, så samme sko forenes
+    # selv om butikkene skriver det rotete ("GEL-NIMBUS 27", "...Dame Grå/Sølv").
+    cleaned_model, name_gender = normalize.split_model_gender(rec["model"])
+    gender = name_gender or rec["gender"]
+    display_model = normalize.canonical_model(rec["model"])
+    bk, mk, gk = normalize.product_key(rec["brand"], cleaned_model, gender)
     match_key = f"{bk}|{mk}|{gk}"
     cur.execute(
         """
@@ -74,7 +79,7 @@ def upsert_product(cur, rec: dict) -> str:
                 category = excluded.category
         returning id
         """,
-        {"brand": rec["brand"], "model": rec["model"], "gender": rec["gender"],
+        {"brand": normalize.norm_brand(rec["brand"]), "model": display_model, "gender": gender,
          "line": rec.get("product_line"), "category": rec.get("category", "running"),
          "mk": match_key},
     )
