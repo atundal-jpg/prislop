@@ -26,6 +26,11 @@ import re, itertools
 # Asics "gel-"linjer som butikker noen ganger skriver uten "gel-"-prefiks.
 _GEL_LINES = {"nimbus", "kayano", "cumulus", "pulse", "excite", "trabuco", "venture"}
 
+# Sammensatte linjenavn (camelCase) som noen butikker deler med mellomrom.
+# Kollapses så "Fuji Speed 4" og "FujiSpeed 4" matcher samme sko.
+_COMPOUNDS = [("fuji speed", "fujispeed"), ("meta speed", "metaspeed"),
+              ("meta fuji", "metafuji"), ("fuji setsu", "fujisetsu")]
+
 _BRAND_FIX = {"asics": "Asics", "nike": "Nike", "adidas": "adidas",
               "new balance": "New Balance", "hoka": "Hoka", "brooks": "Brooks",
               "saucony": "Saucony", "mizuno": "Mizuno", "puma": "Puma"}
@@ -46,13 +51,18 @@ def norm_gender(g: str) -> str:
 
 def norm_model(model: str) -> str:
     """Kanonisk, sammenlignbar modellstreng: lower, samlede skilletegn,
-    foren Gore-Tex/GTX, og legg på 'gel-' der en bar Asics-linje mangler det."""
+    foren Gore-Tex/GTX, kollaps sammensatte navn, og legg på 'gel-' der en
+    bar Asics-linje mangler det."""
     m = (model or "").lower()
     m = re.sub(r"[\-/]", " ", m)
     m = re.sub(r"\s+", " ", m).strip()
     # Gore-Tex == GTX: butikker veksler mellom skrivemåtene (XXL: "Gore-Tex",
     # Intersport/seed: "GTX"). Foren til "gtx" så samme sko matcher på tvers.
     m = re.sub(r"\bgore\s?tex\b", "gtx", m)
+    # Sammensatte linjenavn som noen butikker deler med mellomrom
+    # ("Fuji Speed" vs "FujiSpeed") -> kollaps, ellers splittes samme sko.
+    for sp, joined in _COMPOUNDS:
+        m = m.replace(sp, joined)
     toks = m.split(" ")
     # "nimbus 27" -> "gel-nimbus 27"
     if toks and toks[0] in _GEL_LINES:
@@ -102,6 +112,8 @@ def canonical_model(model: str) -> str:
     cleaned, _ = split_model_gender(model)
     s = re.sub(r"\bgore[\s-]?tex\b", "GTX", cleaned, flags=re.I)
     s = re.sub(r"\bg-tx\b", "GTX", s, flags=re.I)
+    for sp, joined in _COMPOUNDS:                       # "Fuji Speed" -> "FujiSpeed"
+        s = re.sub(re.escape(sp), joined, s, flags=re.I)
     return " ".join("-".join(_cap_token(p) for p in w.split("-")) for w in s.split())
 
 
