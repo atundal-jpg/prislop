@@ -28,6 +28,11 @@ import psycopg2.extras
 
 import normalize  # matching-/normaliseringshjernen (kanonisk produkt + fargevei)
 
+# Skrapede butikkbilder er opphavsrettslig vernet og kan ikke gjenbrukes uten
+# lisens. Hold dette AV til bildene kommer fra en affiliate-feed som gir
+# bruksrett; da byttes kilden og denne settes True (eller fjernes).
+STORE_SCRAPED_IMAGES = False
+
 
 # ---------------------------------------------------------------------------
 #  Tilkobling
@@ -92,6 +97,7 @@ def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
     slik at samme sko ikke splittes fordi butikkene navngir fargen ulikt."""
     code = rec.get("manufacturer_code")
     eans = [s.get("ean") for s in rec.get("sizes", []) if s.get("ean")]
+    img = rec.get("image_url") if STORE_SCRAPED_IMAGES else None
 
     # 1) match på produsentkode (Asics-kode)
     if code:
@@ -102,7 +108,7 @@ def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
         row = cur.fetchone()
         if row:
             cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
-                        (rec.get("image_url"), row[0]))
+                        (img, row[0]))
             return row[0]
 
     # 2) match på EAN-overlapp blant produktets varianter (broer kodeløse butikker)
@@ -126,14 +132,14 @@ def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
                     (code, vid),
                 )
             cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
-                        (rec.get("image_url"), vid))
+                        (img, vid))
             return vid
 
     # 3) ny fargevei (kanonisk farge = butikkens navn ved første observasjon)
     cur.execute(
         "insert into prislop.variants (product_id, color, manufacturer_code, image_url) "
         "values (%s, %s, %s, %s) returning id",
-        (product_id, rec.get("color"), code, rec.get("image_url")),
+        (product_id, rec.get("color"), code, img),
     )
     return cur.fetchone()[0]
 
