@@ -1,8 +1,7 @@
 name: probe
 
-# Gjenbrukbar diagnose-workflow. Velg hvilket probe-script som skal kjøres fra
-# nedtrekksmenyen ved "Run workflow". Kjører kun manuelt, skriver ingenting til
-# DB, trenger ingen secrets.
+# Gjenbrukbar diagnose-workflow. Velg probe-script fra nedtrekket ved "Run
+# workflow". Kjører kun manuelt, skriver ingenting til DB, trenger ingen secrets.
 on:
   workflow_dispatch:
     inputs:
@@ -10,8 +9,9 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_bull.py
+        default: probe_bull_discovery.py
         options:
+          - probe_bull_discovery.py
           - probe_bull.py
           - probe_sportholding_listing.py
           - probe_sportholding.py
@@ -23,11 +23,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Kjør probe (${{ inputs.script }})
         working-directory: scraper
         run: python "${{ inputs.script }}"
