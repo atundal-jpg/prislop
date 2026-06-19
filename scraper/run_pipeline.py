@@ -21,7 +21,7 @@ import loader
 from fetch import Fetcher
 
 BRAND = "Asics"
-STORES = ["xxl", "torshov", "intersport"]   # de feed-løse butikkene
+STORES = ["xxl", "torshov", "intersport", "sport1"]   # de feed-løse butikkene
 
 MODELS = [
     "Gel-Nimbus 27", "Nimbus 28", "Nimbus 28 ATC",
