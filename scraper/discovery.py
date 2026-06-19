@@ -15,8 +15,12 @@ URL-status (verifisert mot live sider juni 2026):
   resten paginerer klient-side mot storeapi.jetshop.io. Vi kaller derfor samme
   GraphQL direkte (offset-paginert) og henter ALLE produktene. Faller tilbake til
   href-skraping av side 1 hvis API-et svikter.
-- Intersport: /asics er DØD (404). Søke-endepunktet /search?query=...&tab=products
-  rendrer produktlenker som href, per modell.
+- Intersport / Sport 1: SAMME SportHolding-plattform (Next.js). Merke-/søkesider
+  server-rendrer bare ~15 produkt-href; vi søker derfor PER MODELL via
+  /search?query=...&tab=products og plukker produktlenker (slug slutter på
+  Asics-stilkoden). Begge bruker felles sportholding_parser.
+  (Löplabbet er samme plattform, men har egen listing-vei — legges til når
+   pagineringen er kartlagt.)
 """
 
 from __future__ import annotations
@@ -26,7 +30,8 @@ import urllib.request
 from urllib.parse import quote_plus, urlencode, urljoin
 import uuid
 
-import xxl_parser, torshov_parser, intersport_parser
+import xxl_parser, torshov_parser
+import sportholding_parser
 from loader import xxl_to_offers
 
 
@@ -38,7 +43,10 @@ def _torshov(html, url):
     return [torshov_parser.parse_torshov(html, url)]
 
 def _intersport(html, url):
-    return [intersport_parser.parse_intersport(html, url)]
+    return [sportholding_parser.parse(html, url, "intersport", "Intersport")]
+
+def _sport1(html, url):
+    return [sportholding_parser.parse(html, url, "sport1", "Sport 1")]
 
 
 # --- Butikk-konfig ----------------------------------------------------------
@@ -91,7 +99,7 @@ STORES = {
     "intersport": {
         "name": "Intersport",
         "base": "https://www.intersport.no",
-        # Søke-endepunktet (per modell). /asics er død. Dette rendrer href.
+        # Søke-endepunktet (per modell). Rendrer produkt-href server-side.
         "search_url": lambda q: f"https://www.intersport.no/search?query={quote_plus(q)}&tab=products",
         # SportHolding-produkt-slug slutter på Asics-stammen, f.eks. ...-1011b958
         "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
@@ -99,6 +107,15 @@ STORES = {
         # Krev derfor modell-token i tillegg, slik Torshov gjør implisitt.
         "require_model_match": True,
         "adapter": _intersport,
+    },
+    "sport1": {
+        "name": "Sport 1",
+        "base": "https://www.sport1.no",
+        # Samme SportHolding-plattform som Intersport: søk per modell, server-rendret href.
+        "search_url": lambda q: f"https://www.sport1.no/search?query={quote_plus(q)}&tab=products",
+        "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        "require_model_match": True,
+        "adapter": _sport1,
     },
 }
 
@@ -273,8 +290,8 @@ def _looks_like_product(href: str, brand: str, model: str) -> bool:
     """Fallback-filter når butikken mangler en ren produktmarkør:
     slug må inneholde merket + minst ett modell-ord + ALLE modell-tall.
 
-    NB: tallene matches mot hele URL-en. For søke-stores (Intersport) ligger
-    Asics-koden i URL-en og inneholder mange sifre, så ordfilteret er den
+    NB: tallene matches mot hele URL-en. For søke-stores (Intersport/Sport 1)
+    ligger Asics-koden i URL-en og inneholder mange sifre, så ordfilteret er den
     egentlige presisjonen — men `all(nums)` hindrer i det minste at f.eks.
     GT-2000 12 matcher GT-2000 14 (begge har «2000», men bare én har «14»)."""
     s = href.lower()
