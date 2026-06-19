@@ -59,6 +59,7 @@ def norm_model(model: str) -> str:
     # Gore-Tex == GTX: butikker veksler mellom skrivemåtene (XXL: "Gore-Tex",
     # Intersport/seed: "GTX"). Foren til "gtx" så samme sko matcher på tvers.
     m = re.sub(r"\bgore\s?tex\b", "gtx", m)
+    m = re.sub(r"\bg\s?tx\b", "gtx", m)            # G-TX / G TX == GTX (matcher canonical_model)
     # Sammensatte linjenavn som noen butikker deler med mellomrom
     # ("Fuji Speed" vs "FujiSpeed") -> kollaps, ellers splittes samme sko.
     for sp, joined in _COMPOUNDS:
