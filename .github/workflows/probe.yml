@@ -1,9 +1,19 @@
-name: probe-sportholding
+name: probe
 
-# Engangs-diagnose. Kjøres kun manuelt (ingen schedule).
-# Skriver ingenting til DB; trenger ingen secrets. Slett trygt etterpå.
+# Gjenbrukbar diagnose-workflow. Velg hvilket probe-script som skal kjøres fra
+# nedtrekksmenyen ved "Run workflow". Kjører kun manuelt, skriver ingenting til
+# DB, trenger ingen secrets.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Hvilket probe-script skal kjøres?"
+        type: choice
+        required: true
+        default: probe_sportholding.py
+        options:
+          - probe_sportholding.py
+          - probe_loplabbet_pages.py
 
 jobs:
   probe:
@@ -16,6 +26,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Kjør probe
+      - name: Kjør probe (${{ inputs.script }})
         working-directory: scraper
-        run: python probe_sportholding.py
+        run: python "${{ inputs.script }}"
