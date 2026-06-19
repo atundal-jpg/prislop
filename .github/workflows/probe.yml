@@ -9,13 +9,13 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_bull_discovery.py
+        default: probe_bull_api.py
         options:
+          - probe_bull_api.py
           - probe_bull_discovery.py
           - probe_bull.py
           - probe_sportholding_listing.py
           - probe_sportholding.py
-          - probe_loplabbet_pages.py
 
 jobs:
   probe:
