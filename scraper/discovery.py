@@ -15,12 +15,11 @@ URL-status (verifisert mot live sider juni 2026):
   resten paginerer klient-side mot storeapi.jetshop.io. Vi kaller derfor samme
   GraphQL direkte (offset-paginert) og henter ALLE produktene. Faller tilbake til
   href-skraping av side 1 hvis API-et svikter.
-- Intersport / Sport 1: SAMME SportHolding-plattform (Next.js). Merke-/søkesider
-  server-rendrer bare ~15 produkt-href; vi søker derfor PER MODELL via
-  /search?query=...&tab=products og plukker produktlenker (slug slutter på
-  Asics-stilkoden). Begge bruker felles sportholding_parser.
-  (Löplabbet er samme plattform, men har egen listing-vei — legges til når
-   pagineringen er kartlagt.)
+- Intersport / Sport 1 / Löplabbet: SAMME SportHolding-plattform (Next.js). Merke-
+  /kategorisida server-rendrer 15 produkter per side og paginerer server-side med
+  ?page=N. Vi går side for side til en side ikke gir nye produkt-lenker -> HELE
+  Asics-katalogen (ikke bare modellene i MODELS). Felles slug-markør + felles
+  sportholding_parser; Barn/Junior filtreres bort på slug.
 """
 
 from __future__ import annotations
@@ -47,6 +46,9 @@ def _intersport(html, url):
 
 def _sport1(html, url):
     return [sportholding_parser.parse(html, url, "sport1", "Sport 1")]
+
+def _loplabbet(html, url):
+    return [sportholding_parser.parse(html, url, "loplabbet", "Löplabbet")]
 
 
 # --- Butikk-konfig ----------------------------------------------------------
@@ -96,28 +98,41 @@ STORES = {
         "marker_re": None,
         "adapter": _torshov,
     },
+    # --- SportHolding-plattformen (Intersport / Sport 1 / Löplabbet) ---------
+    # Felles Next.js-storefront. Merke-/kategorisida server-rendrer 15 produkter
+    # per side og paginerer server-side med ?page=N (verifisert: side 2 gir 15
+    # NYE lenker; ?p / ?size / ?pageSize ignoreres). Vi går derfor side for side
+    # til en side ikke gir nye produkt-lenker -> HELE Asics-katalogen, ikke bare
+    # modellene i MODELS. Felles slug-markør (slutter på Asics-stilkode) + felles
+    # sportholding_parser. Barn/Junior filtreres bort på slug.
     "intersport": {
         "name": "Intersport",
         "base": "https://www.intersport.no",
-        # Søke-endepunktet (per modell). Rendrer produkt-href server-side.
-        "search_url": lambda q: f"https://www.intersport.no/search?query={quote_plus(q)}&tab=products",
-        # SportHolding-produkt-slug slutter på Asics-stammen, f.eks. ...-1011b958
+        "mode": "sportholding_pages",
+        "listing_urls": ["https://www.intersport.no/asics"],
         "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
-        # Markøren matcher HVILKEN SOM HELST Asics-kode -> uten dette låses vi på 6.
-        # Krev derfor modell-token i tillegg, slik Torshov gjør implisitt.
-        "require_model_match": True,
         "adapter": _intersport,
     },
     "sport1": {
         "name": "Sport 1",
         "base": "https://www.sport1.no",
-        # Samme SportHolding-plattform som Intersport: søk per modell, server-rendret href.
-        "search_url": lambda q: f"https://www.sport1.no/search?query={quote_plus(q)}&tab=products",
+        "mode": "sportholding_pages",
+        "listing_urls": ["https://www.sport1.no/asics"],
         "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
-        "require_model_match": True,
         "adapter": _sport1,
     },
+    "loplabbet": {
+        "name": "Löplabbet",
+        "base": "https://loplabbet.no",
+        "mode": "sportholding_pages",
+        "listing_urls": ["https://loplabbet.no/lopesko?Brand=ASICS"],
+        "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        "adapter": _loplabbet,
+    },
 }
+
+# Barn/junior-slugger vi ikke vil ha med fra de umerkede merke-listene.
+_KIDS_RE = re.compile(r"-(barn|junior|jr|gs|ps|td)-", re.I)
 
 HREF_RE = re.compile(r'href="([^"#]+)"', re.I)
 
@@ -353,6 +368,35 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                         seen.add(url)
                         out.append(url)
         _LIST_CACHE[store_slug] = out[:500]
+        return _LIST_CACHE[store_slug]
+
+    # SportHolding (Intersport / Sport 1 / Löplabbet): gå side for side over
+    # merke-/kategori-listen til en side ikke gir nye produkt-lenker -> full
+    # katalog. Modell-uavhengig, så vi cacher og henter bare én gang per kjøring.
+    if cfg.get("mode") == "sportholding_pages":
+        if store_slug in _LIST_CACHE:
+            return _LIST_CACHE[store_slug]
+        marker = cfg["marker_re"]
+        out, seen = [], set()
+        for seed in cfg["listing_urls"]:
+            sep = "&" if "?" in seed else "?"
+            for page in range(1, cfg.get("max_pages", 40) + 1):
+                html = fetcher.get(f"{seed}{sep}page={page}")
+                if not html:
+                    break
+                new = 0
+                for href in HREF_RE.findall(html):
+                    url = urljoin(cfg["base"], href)
+                    if not (url.startswith(cfg["base"]) and marker.search(url)):
+                        continue
+                    if _KIDS_RE.search(url) or url in seen:
+                        continue
+                    seen.add(url)
+                    out.append(url)
+                    new += 1
+                if new == 0:        # ingen nye produkter på denne sida -> ferdig
+                    break
+        _LIST_CACHE[store_slug] = out[:1000]
         return _LIST_CACHE[store_slug]
 
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
