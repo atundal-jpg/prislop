@@ -75,21 +75,51 @@ def upsert_product(cur, rec: dict) -> str:
     display_model = normalize.canonical_model(rec["model"])
     bk, mk, gk = normalize.product_key(rec["brand"], cleaned_model, gender)
     match_key = f"{bk}|{mk}|{gk}"
+    brand = normalize.norm_brand(rec["brand"])
+    line = rec.get("product_line")
+    category = rec.get("category", "running")
+
+    # 1) Autoritativ merge på match_key — forener samme sko på tvers av butikker,
+    #    også når visningsnavnet skrives ulikt ("Nimbus 28" vs "Gel-Nimbus 28").
+    cur.execute("select id from prislop.products where match_key = %s", (match_key,))
+    row = cur.fetchone()
+    if row:
+        cur.execute(
+            "update prislop.products set product_line = coalesce(%s, product_line), "
+            "category = %s where id = %s",
+            (line, category, row[0]),
+        )
+        return row[0]
+
+    # 2) Fall tilbake på den harde unik-nøkkelen (brand, model, gender). Fanger
+    #    tilfeller der canonical_model (visningsnavn) og norm_model (match_key) er
+    #    UENIGE — da finnes raden allerede, men med en annen match_key, og en ren
+    #    INSERT ville krasjet på unik-constrainten og veltet HELE butikkens lasting.
+    #    Vi gjenbruker raden og løfter den til den ferske, kanoniske match_key-en
+    #    (selvhelbredende — nøkkelen er ledig siden steg 1 ikke fant den).
+    cur.execute(
+        "select id from prislop.products where brand = %s and model = %s and gender = %s",
+        (brand, display_model, gender),
+    )
+    row = cur.fetchone()
+    if row:
+        cur.execute(
+            "update prislop.products set match_key = %s, "
+            "product_line = coalesce(%s, product_line), category = %s where id = %s",
+            (match_key, line, category, row[0]),
+        )
+        return row[0]
+
+    # 3) Nytt produkt.
     cur.execute(
         """
         insert into prislop.products (brand, model, gender, product_line, category, match_key)
-        values (%(brand)s, %(model)s, %(gender)s, %(line)s, %(category)s, %(mk)s)
-        on conflict (match_key) where match_key is not null do update
-            set product_line = coalesce(excluded.product_line, prislop.products.product_line),
-                category = excluded.category
+        values (%s, %s, %s, %s, %s, %s)
         returning id
         """,
-        {"brand": normalize.norm_brand(rec["brand"]), "model": display_model, "gender": gender,
-         "line": rec.get("product_line"), "category": rec.get("category", "running"),
-         "mk": match_key},
+        (brand, display_model, gender, line, category, match_key),
     )
     return cur.fetchone()[0]
-
 
 def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
     """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> ny.
