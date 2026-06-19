@@ -208,16 +208,63 @@ def upsert_sizes(cur, offer_id: str, sizes: list[dict]) -> int:
     return len(sizes)
 
 
+def mark_unseen_stale(cur, store_id: int, run_ts) -> int:
+    """Flagg tilbud (og størrelser) som IKKE ble sett i denne kjøringen som
+    utgått, for ÉN butikk.
+
+    «Ikke sett» = last_seen_at eldre enn kjøringens transaksjonstid. now() er
+    konstant i en transaksjon, så alt vi rørte i denne kjøringen fikk
+    last_seen_at = run_ts; alt som er eldre forsvant fra butikkens liste.
+
+    Vi SLETTER ikke — bare setter in_stock=false — så prishistorikk og et evt.
+    comeback bevares (dukker varianten opp igjen, gjenåpner upsert_offer den).
+    Kun den oppgitte butikken berøres; kilder som ikke er med i denne kjøringen
+    (f.eks. den avviklede Get Inspired-raden) står helt urørt.
+
+    Returnerer antall tilbud som ble flagget utgått i denne kjøringen.
+    """
+    cur.execute(
+        """
+        update prislop.offer_sizes os
+           set in_stock = false, updated_at = now()
+          from prislop.offers o
+         where os.offer_id = o.id
+           and o.store_id = %s
+           and o.last_seen_at < %s
+           and os.in_stock = true
+        """,
+        (store_id, run_ts),
+    )
+    cur.execute(
+        """
+        update prislop.offers
+           set in_stock = false
+         where store_id = %s
+           and last_seen_at < %s
+           and in_stock = true
+        """,
+        (store_id, run_ts),
+    )
+    return cur.rowcount
+
+
 # ---------------------------------------------------------------------------
 #  Orkestrering
 # ---------------------------------------------------------------------------
 def load(offers: list[dict]) -> dict:
-    """Laster en liste OfferRecords i én transaksjon. Returnerer enkel statistikk."""
-    stats = {"offers": 0, "sizes": 0}
+    """Laster en liste OfferRecords i én transaksjon. Returnerer enkel statistikk.
+
+    run_pipeline kaller denne ÉN gang per butikk, så stale-flagging nedenfor
+    gjelder kun den butikken vi nettopp lastet. En butikk som feiler (0 records)
+    kaller aldri load(), så en forbigående fetch-feil kan aldri nulle en butikk.
+    """
+    stats = {"offers": 0, "sizes": 0, "stale": 0}
     conn = get_conn()
     try:
         with conn:                       # commit/rollback-transaksjon
             with conn.cursor() as cur:
+                cur.execute("select now()")   # transaksjonstid = «sett i denne kjøringen»
+                run_ts = cur.fetchone()[0]
                 store_ids: dict[str, int] = {}
                 for rec in offers:
                     slug = rec["store"]["slug"]
@@ -228,6 +275,10 @@ def load(offers: list[dict]) -> dict:
                     offer_id = upsert_offer(cur, store_ids[slug], variant_id, rec)
                     stats["sizes"] += upsert_sizes(cur, offer_id, rec.get("sizes", []))
                     stats["offers"] += 1
+                # Etter at alt er upsertet: flagg det vi IKKE så denne kjøringen
+                # (forsvunne fargevarianter) som utgått — per butikk, aldri andre.
+                for sid in store_ids.values():
+                    stats["stale"] += mark_unseen_stale(cur, sid, run_ts)
     finally:
         conn.close()
     return stats
