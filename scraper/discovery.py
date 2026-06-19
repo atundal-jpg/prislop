@@ -5,11 +5,12 @@ Per butikk hentes en kilde-URL (kategori- eller søkeside), og produktlenkene
 plukkes ut. Resultatet mates videre til riktig parser.
 
 URL-status (verifisert mot live sider juni 2026):
-- XXL: kategoriside. Produktlenkene ligger i __NEXT_DATA__-JSON (ikke som href),
-  så vi trekker dem ut med link_re og tar ALLE Asics-løpesko på sida (take_all) —
-  kategorien er allerede filtrert til Asics herre løpesko, så fuzzy modell-match
-  er unødvendig (og upresis). NB: sida viser totalt 86, men server-rendrer kun
-  ~32 i første payload; resten paginerer XXL klient-side (se TODO om paginering).
+- XXL: Apptus eSales. Kategorisida (Next.js) server-rendrer bare ~32 produkter;
+  resten hentes klient-side fra eSales' "landing-page"-query. Vi kaller derfor
+  samme API direkte (skip/limit-paginert) og henter ALLE Asics-løpeskoenes
+  produkt-URL-er (voksen: Herre/Dame/Unisex; Barn/Junior filtreres bort). Hver
+  produktside fetches + parses som før (parse_xxl gir størrelser per side).
+  Faller tilbake til __NEXT_DATA__-skrap av side 1 hvis API-et svikter.
 - Torshov: Jetshop Flight. Kategorisida server-rendrer bare side 1 (~40 av 106);
   resten paginerer klient-side mot storeapi.jetshop.io. Vi kaller derfor samme
   GraphQL direkte (offset-paginert) og henter ALLE produktene. Faller tilbake til
@@ -22,7 +23,8 @@ from __future__ import annotations
 import json
 import re
 import urllib.request
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urlencode, urljoin
+import uuid
 
 import xxl_parser, torshov_parser, intersport_parser
 from loader import xxl_to_offers
@@ -44,11 +46,26 @@ STORES = {
     "xxl": {
         "name": "XXL",
         "base": "https://www.xxl.no",
-        # Kategoriside (Asics, herre). q ignoreres.
+        # Kategoriside — brukes bare som fallback hvis eSales-API-et svikter. q ignoreres.
         "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
-        # Produktlenkene ligger i __NEXT_DATA__, ikke som href -> trekk dem ut direkte.
+        # Apptus eSales: henter ALLE produkt-URL-er (paginert), ikke bare side 1.
+        "mode": "esales_api",
+        "api": {
+            "url": "https://wae24fd27.api.esales.apptus.cloud/api/storefront/v3/queries/landing-page",
+            # customerKey = XXLs stabile eSales-tenant (ligger i frontend, ikke hemmelig).
+            "customerKey": "10cdaf6d-129a-498c-b0c9-f450442915f3",
+            "site": "xxl.no",
+            "brand_filter": "Asics",
+            # /c/142010 = kategorien "Løpesko" (alle kjønn, 219 totalt).
+            "pageReference": "/c/142010",
+            # XXLs fysiske butikker (gir lager per butikk). 301–339 dekker alle vi har sett.
+            "stores": "|".join(str(n) for n in range(301, 340)),
+            "limit": 32,
+            # Behold voksen-segmentene; dropp Barn/Junior.
+            "gender_keep": ("Herre", "Dame", "Unisex"),
+        },
+        # Fallback: __NEXT_DATA__-lenker på side 1 hvis API-et svikter.
         "link_re": re.compile(r"/[a-z0-9-]+/p/\d+_\d+_Style", re.I),
-        # Hele sida er Asics herre løpesko -> ta alle, ikke filtrer per modell.
         "take_all": True,
         "adapter": _xxl,
     },
@@ -163,6 +180,91 @@ def _jetshop_paths(api: dict, cat_id: str) -> list[str]:
     return paths
 
 
+# --- XXL: Apptus eSales (landing-page query, skip/limit-paginert) ----------
+def _esales_gender_ok(product: dict, keep) -> bool:
+    """True hvis produktet er i et ønsket kjønnssegment.
+    Bruker eSales' usps (pim_mandatory_user_string); slug-backstopp for barn/junior.
+    Ved parse-feil: behold (vi vil aldri droppe et voksenprodukt på en tabbe)."""
+    link = (product.get("link") or "").lower()
+    if "-barn-" in link or "-junior-" in link:
+        return False
+    try:
+        custom = product.get("custom") or {}
+        usps_raw = (custom.get("usps") or [{}])[0].get("id") or "[]"
+        for item in json.loads(usps_raw):
+            if item.get("key") == "pim_mandatory_user_string":
+                vals = item.get("values") or []
+                return any(v in keep for v in vals)
+    except Exception:
+        pass
+    return True
+
+
+def _esales_paths(api: dict) -> list[str]:
+    """Hent ALLE produkt-stier fra XXLs eSales landing-page-query (skip/limit-paginert).
+
+    sessionKey genereres ferskt per kjøring: eSales bruker den kun til
+    sesjons-affinitet, ikke autentisering, så en tilfeldig UUID er tryggere
+    enn en utgått, fanget nøkkel. customerKey er XXLs stabile tenant.
+    """
+    limit = int(api.get("limit", 32))
+    keep = api.get("gender_keep")
+    common = {
+        "channels": "ONLINE|STORE",
+        "customerKey": api["customerKey"],
+        "sessionKey": str(uuid.uuid4()),
+        "site": api["site"],
+        "stores": api["stores"],
+        "touchpoint": "DESKTOP",
+        "priceId": "member",
+        "f.brand": api["brand_filter"],
+        "notify": "true",
+        "pageReference": api["pageReference"],
+        "locale": "nb-NO",
+        "market": "NO",
+        "templateId": "PLP",
+        "limit": str(limit),
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": "https://www.xxl.no",
+        "Referer": "https://www.xxl.no/",
+        "User-Agent": "Mozilla/5.0 (prislop)",
+    }
+    paths, seen, skip, total = [], set(), 0, None
+    while skip <= 2000:                          # sikkerhetstak
+        params = dict(common, skip=str(skip))
+        url = api["url"] + "?" + urlencode(params)
+        try:
+            req = urllib.request.Request(url, data=b"", headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            print(f"  [xxl] eSales-feil skip={skip}: {e}")
+            break
+        primary = data.get("primaryList") or {}
+        if total is None:
+            total = primary.get("totalHits") or 0
+        groups = primary.get("productGroups") or []
+        if not groups:
+            break
+        for g in groups:
+            for p in (g.get("products") or []):
+                link = p.get("link")
+                if not link:
+                    continue
+                if keep and not _esales_gender_ok(p, keep):
+                    continue
+                if link not in seen:
+                    seen.add(link)
+                    paths.append(link)
+        skip += limit
+        if total and skip >= total:
+            break
+    return paths
+
+
 def _model_tokens(model: str) -> list[str]:
     return [t for t in re.split(r"[\s\-/]+", model.lower()) if t]
 
@@ -210,6 +312,29 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                 if url.startswith(cfg["base"]) and url not in seen:
                     seen.add(url)
                     out.append(url)
+        _LIST_CACHE[store_slug] = out[:500]
+        return _LIST_CACHE[store_slug]
+
+    # Apptus eSales (XXL): hent ALLE produkt-URL-er direkte fra API-et, paginert.
+    if cfg.get("mode") == "esales_api":
+        if store_slug in _LIST_CACHE:
+            return _LIST_CACHE[store_slug]
+        out, seen = [], set()
+        for p in _esales_paths(cfg["api"]):
+            url = urljoin(cfg["base"], p)
+            if url.startswith(cfg["base"]) and url not in seen:
+                seen.add(url)
+                out.append(url)
+        if not out:
+            # Fallback: __NEXT_DATA__-lenker på side 1 (ingen regresjon hvis API svikter).
+            print("  [xxl] eSales-API ga ingen treff — faller tilbake på side 1-skraping")
+            html = fetcher.get(cfg["search_url"](""))
+            if html and cfg.get("link_re"):
+                for path in cfg["link_re"].findall(html):
+                    url = urljoin(cfg["base"], path)
+                    if url.startswith(cfg["base"]) and url not in seen:
+                        seen.add(url)
+                        out.append(url)
         _LIST_CACHE[store_slug] = out[:500]
         return _LIST_CACHE[store_slug]
 
