@@ -7,11 +7,11 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_bull_ajax.py
+        default: probe_bull_es.py
         options:
+          - probe_bull_es.py
           - probe_bull_ajax.py
           - probe_bull_api.py
-          - probe_bull_discovery.py
           - probe_sportholding_listing.py
 
 jobs:
