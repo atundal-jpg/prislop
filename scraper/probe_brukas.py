@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """
-probe_brukas.py (v2) — las discovery + parser for Brukas (nopCommerce).
+probe_brukas.py (v3) — hvordan ligger STORRELSENE pa en farge-side?
 
-1) Discovery: er /asics en ekte Asics-produsentside? (sammenlign med fake-slug)
-   Virker ?manufacturerids=169 server-side pa kategoriene?
-2) Parser: dump JSON-LD pa en produktside -> har variantene pris + lager (og
-   hvordan er storrelse kodet)? Hvor ligger hovedprisen?
+JSON-LD ga bare EN variant (storrelse 43,5) + tom hasVariant, og offer-URL hadde
+size-suffiks (-435). Ser ut som nopCommerce grouped product. Vi dumper per-
+storrelse-markupen pa farge-sida: data-productid, gtin-er, storrelse-etiketter,
+pris og lagerstatus per rad. Tester ogsa om en size-variant-URL (-435) er egen side.
 """
 from __future__ import annotations
 import json
 import re
 import urllib.request
 import urllib.error
-from urllib.parse import urljoin
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.brukas.no"
-PROD_TITLE = re.compile(r'class="product-title"[^>]*>\s*<a[^>]*href="([^"#?]+)"', re.I)
-PAGENUM = re.compile(r'[?&]pagenumber=(\d+)', re.I)
+PROD = BASE + "/asics-gel-nimbus-28-herre"
 LD = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S | re.I)
 
 
@@ -32,70 +30,69 @@ def get(url):
         return None, "FEIL %s" % e
 
 
-def slugs(html):
-    out, seen = [], set()
-    for m in PROD_TITLE.finditer(html):
-        u = urljoin(BASE, m.group(1)).replace(BASE, "")
-        if u not in seen:
-            seen.add(u)
-            out.append(u)
+def win(html, needle, n=4, pad=130):
+    out, start, low = [], 0, html.lower()
+    for _ in range(n):
+        i = low.find(needle.lower(), start)
+        if i < 0:
+            break
+        out.append(re.sub(r"\s+", " ", html[max(0, i - pad):i + len(needle) + pad]))
+        start = i + len(needle)
     return out
 
 
 def main():
-    print("probe_brukas v2\n")
+    print("probe_brukas v3\n")
+    st, p = get(PROD)
+    print("== %s -> %s, %dB ==" % (PROD.replace(BASE, ""), st, len(p)))
 
-    print("== 1a) /asics ekte? (vs fake-slug) ==")
-    for path in ["/asics", "/asics?pagenumber=2", "/asics-fake-xyz-123", "/joggesko-herre?manufacturerids=169"]:
-        st, html = get(BASE + path)
-        sl = slugs(html)
-        pages = sorted(set(int(x) for x in PAGENUM.findall(html)))
-        asics = [s for s in sl if s.startswith("/asics-")]
-        print("   %-38s -> %s  prod=%2d  asics-slug=%2d  maxpage=%s" %
-              (path, st, len(sl), len(asics), pages[-1] if pages else "-"))
-        if "asics" in path and "fake" not in path and sl:
-            print("        eksempler:", sl[:4])
+    gtins = re.findall(r'"gtin"\s*:\s*"(\d{8,14})"', p) or re.findall(r'\b(\d{13})\b', p)
+    print("gtin-er i sida: %d unike=%s" % (len(gtins), sorted(set(gtins))[:14]))
+    pids = re.findall(r'data-productid="(\d+)"', p)
+    print("data-productid: %d unike=%s" % (len(pids), sorted(set(pids))[:14]))
+    for w in ["På lager", "Utsolgt", "Få på lager", "Ikke på lager", "in stock", "out of stock"]:
+        c = p.lower().count(w.lower())
+        if c:
+            print("  lager-ord '%s': %d treff" % (w, c))
 
-    print("\n== 1b) manufacturerids=169 pa lopekategoriene ==")
-    for cat in ["/joggesko-dame", "/joggesko-herre", "/terrengsko-dame", "/terrengsko-herre"]:
-        st, html = get("%s%s?manufacturerids=169" % (BASE, cat))
-        sl = slugs(html)
-        asics = [s for s in sl if s.startswith("/asics-")]
-        pages = sorted(set(int(x) for x in PAGENUM.findall(html)))
-        print("   %-22s -> prod=%2d (asics-slug=%2d) maxpage=%s" %
-              (cat, len(sl), len(asics), pages[-1] if pages else "-"))
-
-    print("\n== 2) produktside JSON-LD + pris ==")
-    st, p = get(BASE + "/asics-gel-nimbus-28-herre")
-    print("   status=%s lengde=%d" % (st, len(p)))
-    blocks = LD.findall(p)
-    print("   JSON-LD-blokker:", len(blocks))
-    for i, blk in enumerate(blocks):
+    print("\n-- alle JSON-LD Product-navn (ser vi flere storrelser?) --")
+    for blk in LD.findall(p):
         try:
             d = json.loads(blk)
-        except Exception as e:
-            print("   [%d] ikke-parsebar (%s): %s" % (i, e, blk[:120]))
+        except Exception:
             continue
-        items = d if isinstance(d, list) else [d]
-        for it in items:
-            if not isinstance(it, dict):
+        for it in (d if isinstance(d, list) else [d]):
+            if isinstance(it, dict) and it.get("@type") == "Product":
+                offs = it.get("offers")
+                offs = offs if isinstance(offs, list) else [offs] if offs else []
+                print("   name=%r" % it.get("name"))
+                print("     gtin=%s  #offers=%d  hasVariant=%d" %
+                      (it.get("gtin"), len(offs), len(it.get("hasVariant") or [])))
+
+    print("\n-- markup rundt grouped/variant/size --")
+    for anchor in ["product-variant", "variant-line", "associated", "grouped",
+                   "attribute", "tbl", "product-grid", "data-productid"]:
+        ws = win(p, anchor, n=1, pad=160)
+        if ws:
+            print("   [%s] ...%s..." % (anchor, ws[0]))
+
+    print("\n-- inline JS-variantdata? (size + gtin/stock) --")
+    for kw in ['"size"', "variants", "combinations", "stockquantity", "productvariant"]:
+        for w in win(p, kw, n=1, pad=120):
+            print("   [%s] ...%s..." % (kw, w))
+
+    print("\n== size-variant-URL egen side? /asics-gel-nimbus-28-herre-435 ==")
+    st2, p2 = get(BASE + "/asics-gel-nimbus-28-herre-435")
+    print("   -> %s, %dB" % (st2, len(p2)))
+    if st2 == 200:
+        for blk in LD.findall(p2):
+            try:
+                d = json.loads(blk)
+            except Exception:
                 continue
-            t = it.get("@type")
-            print("   [%d] @type=%s nokler=%s" % (i, t, list(it.keys())))
-            if t in ("Product", "ProductGroup"):
-                print("       ", json.dumps(it, ensure_ascii=False)[:1600])
-            off = it.get("offers")
-            if off:
-                offs = off if isinstance(off, list) else [off]
-                print("        offers(%d):" % len(offs))
-                for o in offs[:3]:
-                    if isinstance(o, dict):
-                        print("          ", json.dumps(o, ensure_ascii=False)[:260])
-    # hovedpris i HTML
-    for m in re.finditer(r'(price-value-\d+|product-price|prices)[^>]*>([^<]{1,30})', p, re.I):
-        print("   pris-markup:", m.group(0)[:90])
-    pv = re.search(r'\b(\d[\d \u00a0.]{1,7}),-', p)
-    print("   forste ',-'-pris:", pv.group(0) if pv else "?")
+            for it in (d if isinstance(d, list) else [d]):
+                if isinstance(it, dict) and it.get("@type") == "Product":
+                    print("   navn=%r gtin=%s" % (it.get("name"), it.get("gtin")))
 
 
 if __name__ == "__main__":
