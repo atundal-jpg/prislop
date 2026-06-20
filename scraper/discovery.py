@@ -29,7 +29,7 @@ import urllib.request
 from urllib.parse import quote_plus, urlencode, urljoin
 import uuid
 
-import xxl_parser, torshov_parser, bull_parser
+import xxl_parser, torshov_parser, bull_parser, brukas_parser
 import sportholding_parser
 from loader import xxl_to_offers
 
@@ -52,6 +52,11 @@ def _loplabbet(html, url):
 
 def _bull(html, url):
     return [bull_parser.parse(html, url)]
+
+def _brukas(html, url):
+    # nopCommerce: én side = én (farge+størrelse); aggregeres til colorway senere
+    rec = brukas_parser.parse_size(html, url)
+    return [rec] if rec else []
 
 
 # --- Butikk-konfig ----------------------------------------------------------
@@ -150,6 +155,20 @@ STORES = {
         "keep_category": "Løpesko",
         "page_size": 32,
         "adapter": _bull,
+    },
+    # Brukås Sport — nopCommerce (Digitroll). Server-rendret. Hvert produkt er
+    # én (farge+størrelse) med egen JSON-LD + EAN. Discovery paginerer løpe-
+    # kategoriene (?pagenumber=N) og beholder /asics-…-slugs; brukas_parser
+    # parser hver side, og aggregate() grupperer til colorways. EAN-matchet.
+    "brukas": {
+        "name": "Brukås Sport",
+        "base": "https://www.brukas.no",
+        "mode": "nopcommerce_pages",
+        "categories": ["/joggesko-dame", "/joggesko-herre",
+                       "/terrengsko-dame", "/terrengsko-herre"],
+        "brand_re": re.compile(r"/asics-[a-z0-9-]+", re.I),
+        "adapter": _brukas,
+        "aggregate": brukas_parser.aggregate,
     },
 }
 
@@ -386,6 +405,48 @@ def _bull_api_paths(cfg: dict) -> list[str]:
     return out
 
 
+def _nopcommerce_paths(cfg: dict) -> list[str]:
+    """Enumerer Asics-løpesko-URL-er fra en nopCommerce-butikk (Brukås).
+    Server-rendret. Paginerer hver løpekategori med ?pagenumber=N (1-indeksert,
+    siste side leses fra pager-lenkene) og beholder produkt-slugs som matcher
+    brand_re (/asics-…). Hvert produkt er én størrelse; aggregeres senere."""
+    base = cfg["base"]
+    brand_re = cfg["brand_re"]
+    title_re = re.compile(r'class="product-title"[^>]*>\s*<a[^>]*href="([^"#?]+)"', re.I)
+    page_re = re.compile(r'[?&]pagenumber=(\d+)', re.I)
+    headers = {"User-Agent": "Mozilla/5.0 (prislop)", "Accept-Language": "nb-NO"}
+    out, seen = [], set()
+
+    def fetch(url):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=40) as r:
+                return r.read().decode("utf-8", "replace")
+        except Exception as e:
+            print(f"  [brukas] feil {url}: {e}")
+            return ""
+
+    def collect(html):
+        for href in title_re.findall(html):
+            if not brand_re.search(href):
+                continue
+            full = urljoin(base, href)
+            if full.startswith(base) and full not in seen:
+                seen.add(full)
+                out.append(full)
+
+    for cat in cfg["categories"]:
+        first = fetch(f"{base}{cat}")
+        if not first:
+            continue
+        collect(first)
+        last = max([int(x) for x in page_re.findall(first)] or [1])
+        last = min(last, cfg.get("max_pages", 20))
+        for page in range(2, last + 1):
+            collect(fetch(f"{base}{cat}?pagenumber={page}"))
+    return out
+
+
 def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -> list[str]:
     cfg = STORES[store_slug]
 
@@ -470,6 +531,13 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         if store_slug in _LIST_CACHE:
             return _LIST_CACHE[store_slug]
         _LIST_CACHE[store_slug] = _bull_api_paths(cfg)[:1000]
+        return _LIST_CACHE[store_slug]
+
+    # Brukås (nopCommerce): paginer løpekategoriene, behold Asics-slugs.
+    if cfg.get("mode") == "nopcommerce_pages":
+        if store_slug in _LIST_CACHE:
+            return _LIST_CACHE[store_slug]
+        _LIST_CACHE[store_slug] = _nopcommerce_paths(cfg)[:2000]
         return _LIST_CACHE[store_slug]
 
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
