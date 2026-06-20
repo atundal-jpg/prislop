@@ -136,14 +136,19 @@ STORES = {
     # elasticsearch_ui; vi henter den server-rendrede griden fra Drupals
     # AJAX-rute (?_wrapper_format=drupal_ajax) på Asics-vendor-faceten (13524),
     # paginert med ?page=N. Produkt-slug inneholder «asics-».
+    # Bull Ski & Kajakk — Drupal Commerce 2. Listing rendres klient-side via
+    # elasticsearch_ui, men dataene ligger i et JSON-API: /api/navigation/product
+    # (product_vendor=13524 = Asics), paginert ?page=N (1-indeksert), 32/side.
+    # Vi enumererer Asics-løpesko-URL-ene derfra; bull_parser henter per-størrelse
+    # lager fra produktsidas <select>.
     "bull": {
         "name": "Bull Ski & Kajakk",
         "base": "https://bull-ski-kajakk.no",
-        "mode": "drupal_ajax_pages",
-        "ajax_listing": ("https://bull-ski-kajakk.no/sko/lopesko"
-                         "?product_vendor%5B0%5D=13524&query="
-                         "&_wrapper_format=drupal_ajax&_drupal_ajax=1"),
-        "marker_re": re.compile(r"/sko/[a-z0-9/_-]*asics-[a-z0-9-]+", re.I),
+        "mode": "bull_api",
+        "api_url": ("https://bull-ski-kajakk.no/api/navigation/product"
+                    "?product_vendor%5B0%5D=13524&query="),
+        "keep_category": "Løpesko",
+        "page_size": 32,
         "adapter": _bull,
     },
 }
@@ -337,46 +342,46 @@ def _looks_like_product(href: str, brand: str, model: str) -> bool:
     return word_ok and num_ok
 
 
-def _bull_ajax_paths(cfg: dict) -> list[str]:
-    """Hent ALLE produkt-URL-er fra Bulls Drupal-AJAX-rute (elasticsearch_ui).
-    Svaret er en AJAX-kommando-array; den rendrede griden ligger JSON-escaped i
-    `insert`-kommandoenes `data` (json.loads av-escaper). Paginert med ?page=N
-    (0-indeksert) til en side ikke gir nye produkt-lenker."""
+def _bull_api_paths(cfg: dict) -> list[str]:
+    """Enumerer Asics-løpesko-URL-er fra Bulls elasticsearch_ui JSON-API.
+    /api/navigation/product gir 32 produkter per side (?page=N, 1-indeksert) med
+    `url` + `product_category_text` inline. Vi paginerer til alt (`found`) er
+    hentet og beholder kun produkter med «Løpesko» i kategoriteksten."""
     base = cfg["base"]
-    seed = cfg["ajax_listing"]
-    marker = cfg["marker_re"]
+    api = cfg["api_url"]
+    keep = cfg.get("keep_category", "Løpesko")
+    size = cfg.get("page_size", 32)
     headers = {
         "User-Agent": "Mozilla/5.0 (prislop)",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Accept": "application/json, */*",
         "Referer": base + "/sko/lopesko",
     }
     out, seen = [], set()
-    for page in range(0, cfg.get("max_pages", 60)):
-        url = f"{seed}&page={page}"
+    found = None
+    for page in range(1, cfg.get("max_pages", 30) + 1):
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=40) as resp:
-                body = resp.read().decode("utf-8", "replace")
+            req = urllib.request.Request(f"{api}&page={page}", headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                d = json.loads(resp.read().decode("utf-8", "replace"))
         except Exception as e:
-            print(f"  [bull] AJAX-feil page={page}: {e}")
+            print(f"  [bull] API-feil page={page}: {e}")
             break
-        try:
-            cmds = json.loads(body)
-        except json.JSONDecodeError:
+        items = d.get("items") if isinstance(d.get("items"), list) else []
+        if not items:
             break
-        html = "".join(
-            c.get("data", "") for c in cmds
-            if isinstance(c, dict) and c.get("command") == "insert" and isinstance(c.get("data"), str)
-        )
-        new = 0
-        for m in marker.finditer(html):
-            u = urljoin(base, m.group(0))
-            if u.startswith(base) and u not in seen:
-                seen.add(u)
-                out.append(u)
-                new += 1
-        if new == 0:        # ingen nye produkter -> ferdig
+        if found is None:
+            found = d.get("found") or 0
+        for it in items:
+            if keep and keep not in (it.get("product_category_text") or []):
+                continue
+            u = it.get("url") or it.get("schema_metatag_url")
+            if not u:
+                continue
+            full = urljoin(base, u)
+            if full.startswith(base) and full not in seen:
+                seen.add(full)
+                out.append(full)
+        if found and page * size >= found:      # hele settet hentet
             break
     return out
 
@@ -460,11 +465,11 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         _LIST_CACHE[store_slug] = out[:1000]
         return _LIST_CACHE[store_slug]
 
-    # Bull (Drupal Commerce 2): hent hele Asics-griden fra AJAX-ruta, paginert.
-    if cfg.get("mode") == "drupal_ajax_pages":
+    # Bull (Drupal Commerce 2): enumerer Asics-løpesko fra JSON-API-et, paginert.
+    if cfg.get("mode") == "bull_api":
         if store_slug in _LIST_CACHE:
             return _LIST_CACHE[store_slug]
-        _LIST_CACHE[store_slug] = _bull_ajax_paths(cfg)[:1000]
+        _LIST_CACHE[store_slug] = _bull_api_paths(cfg)[:1000]
         return _LIST_CACHE[store_slug]
 
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
