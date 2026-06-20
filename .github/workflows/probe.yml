@@ -1,7 +1,5 @@
 name: probe
 
-# Gjenbrukbar diagnose-workflow. Velg probe-script fra nedtrekket ved "Run
-# workflow". Kjører kun manuelt, skriver ingenting til DB, trenger ingen secrets.
 on:
   workflow_dispatch:
     inputs:
@@ -9,13 +7,12 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_bull_api.py
+        default: probe_bull_ajax.py
         options:
+          - probe_bull_ajax.py
           - probe_bull_api.py
           - probe_bull_discovery.py
-          - probe_bull.py
           - probe_sportholding_listing.py
-          - probe_sportholding.py
 
 jobs:
   probe:
