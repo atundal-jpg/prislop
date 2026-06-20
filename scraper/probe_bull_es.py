@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-probe_bull_es.py — finn endepunktet elasticsearch_ui-JS-en spør Elasticsearch mot.
+probe_bull_es.py — finn Bulls Elasticsearch-endepunkt UTEN DevTools.
 
-drupal_ajax-ruta gir bare et tomt <div id="elasticsearch-ui">; JS-en fyller det
-via et eget kall. Vi henter <script src> fra /sko/lopesko, leter opp JS-en som
-nevner «elasticsearch», og griper URL-/rute-/fetch-mønstre + query-bygging.
-Dumper også hele elasticsearchUi-settings + baseUrl.
+Listing-griden fylles klient-side av elasticsearch_ui-JS-en. Den JS-fila
+inneholder nesten alltid ruta/endepunktet den spør mot. Vi:
+  1) henter listesida + AJAX-svaret, plukker ut alle JS-filer (særlig de med
+     "elasticsearch" i navnet),
+  2) henter de JS-filene og grep'er etter endepunkt/rute-mønstre,
+  3) dumper full drupalSettings og leter etter endpoint/host/index-nøkler,
+  4) prøver et par åpenbare endepunkt-kandidater og ser om de gir produkt-JSON.
 
 Kjøres i GitHub Actions. Skriver ingenting til DB.
 """
@@ -17,72 +20,80 @@ import urllib.error
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://bull-ski-kajakk.no"
-SRC_RE = re.compile(r'<script[^>]+src="([^"]+)"', re.I)
-SETTINGS_RE = re.compile(r'data-drupal-selector="drupal-settings-json"[^>]*>(\{.*?\})</script>', re.S)
-# Mønstre som kan røpe endepunktet
+PAGE = BASE + "/sko/lopesko?product_vendor%5B0%5D=13524&query="
+AJAX = PAGE + "&_wrapper_format=drupal_ajax&_drupal_ajax=1"
+
+JS_SRC_RE = re.compile(r'(?:src=|"src":\s*)"([^"]+\.js[^"]*)"', re.I)
+SETTINGS_RE = re.compile(
+    r'data-drupal-selector="drupal-settings-json"[^>]*>(\{.*?\})</script>', re.S)
 HINT_RE = re.compile(
-    r"""(elasticsearch[\w/.\-]*|/[a-z0-9_\-/]*search[a-z0-9_\-/]*|_search|"\s*url\s*"\s*:|"""
-    r"""Drupal\.url\([^)]*\)|fetch\(\s*['"][^'"]+['"]|\.ajax\(|endpoint|indexPlugin|/elasticsearch[\w\-/]*)""",
-    re.I)
+    r'(elasticsearch[^"\x27\s]{0,40}|_search|/ajax[^"\x27\s]{0,30}|Drupal\.url\([^)]{0,60}\)|'
+    r'"/[a-z0-9/_-]*(?:search|elastic|product|ajax)[a-z0-9/_-]*"|index["\x27]?\s*[:=]\s*["\x27][^"\x27]+)', re.I)
 
 
-def get(url: str) -> tuple[int | None, str]:
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "nb-NO"})
+def get(url, headers=None):
+    h = {"User-Agent": UA, "Accept": "*/*", "Accept-Language": "nb-NO"}
+    if headers:
+        h.update(headers)
     try:
-        with urllib.request.urlopen(req, timeout=40) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=40) as r:
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, ""
     except Exception as e:
-        return None, f"FEIL {e}"
+        return None, "FEIL %s" % e
 
 
-def main() -> None:
-    st, html = get(BASE + "/sko/lopesko")
-    print(f"/sko/lopesko -> {st}, {len(html)}B")
+def main():
+    print("probe_bull_es\n")
+    _, page = get(PAGE)
+    _, ajax = get(AJAX, {"X-Requested-With": "XMLHttpRequest"})
+    blob = page + "\n" + ajax
 
-    # settings: full elasticsearchUi + baseUrl
-    m = SETTINGS_RE.search(html)
+    js = sorted(set(JS_SRC_RE.findall(blob)))
+    es_js = [u for u in js if "elastic" in u.lower() or "search" in u.lower()]
+    print("== JS-filer: %d totalt, %d sok/elastic-relaterte ==" % (len(js), len(es_js)))
+    for u in es_js[:10]:
+        print("   " + u)
+    if not es_js:
+        cand = [u for u in js if u.startswith("/") and "/core/" not in u]
+        print("   (ingen elastic-navngitt; egne moduler/temaer:)")
+        for u in cand[:15]:
+            print("   " + u)
+        es_js = cand
+
+    print("\n== endepunkt-hint i JS ==")
+    for u in es_js[:12]:
+        full = u if u.startswith("http") else BASE + u
+        st, body = get(full)
+        if st != 200 or not body:
+            print("   %s -> %s" % (u, st))
+            continue
+        hints = sorted(set(h if isinstance(h, str) else h[0] for h in HINT_RE.findall(body)))
+        hits = [h for h in hints if len(h) > 4][:14]
+        print("   %s (%dB): %s" % (u, len(body), hits if hits else "(ingen treff)"))
+
+    print("\n== drupalSettings-nokler ==")
+    m = SETTINGS_RE.search(page)
     if m:
         try:
             s = json.loads(m.group(1))
-            print("  baseUrl:", (s.get("path") or {}).get("baseUrl"))
-            es = s.get("elasticsearchUi")
-            print("  elasticsearchUi (full):", json.dumps(es, ensure_ascii=False)[:1500])
+            print("   topp:", list(s.keys()))
+            for k, v in s.items():
+                vs = json.dumps(v, ensure_ascii=False)
+                if re.search(r"elastic|host|index|endpoint|/search|api", vs, re.I):
+                    print("   * %s: %s" % (k, vs[:400]))
         except Exception as e:
-            print("  settings parse-feil:", e)
+            print("   parse-feil:", e)
 
-    # JS-filer
-    srcs = []
-    for src in SRC_RE.findall(html):
-        full = src if src.startswith("http") else BASE + (src if src.startswith("/") else "/" + src)
-        if full.startswith(BASE) and full.endswith(".js"):
-            srcs.append(full)
-    srcs = sorted(set(srcs))
-    print(f"\n  lokale JS-filer: {len(srcs)}")
-
-    # let etter elasticsearch-relatert JS (navn eller innhold)
-    checked = 0
-    for u in srcs:
-        st, js = get(u)
-        if not js or "elasticsearch" not in js.lower():
-            continue
-        checked += 1
-        print(f"\n  >>> {u}  ({len(js)}B)")
-        seen = set()
-        for mt in HINT_RE.finditer(js):
-            frag = js[max(0, mt.start() - 40):mt.end() + 80]
-            frag = re.sub(r"\s+", " ", frag).strip()
-            if frag not in seen:
-                seen.add(frag)
-                print(f"      … {frag}")
-            if len(seen) >= 25:
-                break
-        if checked >= 4:
-            break
-    if checked == 0:
-        print("\n  Fant ingen JS som nevner 'elasticsearch' (trolig aggregert/minifisert).")
-        print("  Aggregerte bundles:", [u for u in srcs if "/js/" in u][:6])
+    print("\n== endepunkt-gjetninger ==")
+    for path in ["/elasticsearch_ui/product", "/elasticsearch-ui/product",
+                 "/elasticsearch/product/_search",
+                 "/sko/lopesko?product_vendor%5B0%5D=13524&query=&_format=json"]:
+        st, body = get(BASE + path, {"X-Requested-With": "XMLHttpRequest",
+                                     "Accept": "application/json"})
+        snip = body[:90].replace("\n", " ")
+        print("   %s -> %s  %r" % (path, st, snip))
 
 
 if __name__ == "__main__":
