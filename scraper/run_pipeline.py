@@ -21,7 +21,7 @@ import loader
 from fetch import Fetcher
 
 BRAND = "Asics"
-STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull"]   # de feed-løse butikkene
+STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas"]   # de feed-løse butikkene
 
 MODELS = [
     "Gel-Nimbus 27", "Nimbus 28", "Nimbus 28 ATC",
@@ -60,6 +60,11 @@ def harvest_store(fetcher, slug: str) -> list[dict]:
                 records.extend(discovery.STORES[slug]["adapter"](html, url))
             except Exception as e:
                 print(f"  [{slug}] parse-feil {url}: {e}")
+    # noen butikker (Brukås) leverer per-størrelse-partials som må
+    # grupperes til colorways før lasting — opt-in via STORES[...]["aggregate"]
+    agg = discovery.STORES[slug].get("aggregate")
+    if agg:
+        records = agg(records)
     return records
 
 
