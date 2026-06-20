@@ -1,30 +1,24 @@
 #!/usr/bin/env python3
 """
-probe_bull_es.py (v3) — inspiser /api/navigation/product-JSON-en.
+probe_bull_es.py (v4) — inspiser produkt-itemsene i /api/navigation/product.
 
-GET /api/navigation/product gir 497KB JSON (hele katalogen). Vi vil vite:
-  - strukturen (hvor ligger produkt-lista, hvor mange),
-  - feltene per produkt: url/path, merke/vendor, kategori, kode/sku, pris,
-    OG om varianter/storrelser/lager ligger inline (da slipper vi PDP-henting),
-  - om query-string-facet (product_vendor=13524) filtrerer, ellers filtrerer vi
-    sjolv i JSON-en.
-
-Kjores i GitHub Actions. Skriver ingenting til DB.
+Topp-nokler: result, context, facets, items, found, more, rows_per_page, rows.
+Produktene ligger i 'items' (eller result.items). Vi dumper found/rows_per_page/
+more, ett fullt produkt (alle felt: url, merke, kategori, kode, pris, varianter,
+storrelser, lager), og tester paginering (&page=1).
 """
 from __future__ import annotations
 import json
-import re
 import urllib.request
 import urllib.error
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://bull-ski-kajakk.no"
+FACET = "/api/navigation/product?product_vendor%5B0%5D=13524&query="
 
 
-def get(url, headers=None):
+def get(url):
     h = {"User-Agent": UA, "Accept": "application/json, */*", "Accept-Language": "nb-NO"}
-    if headers:
-        h.update(headers)
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=60) as r:
             return r.status, r.read().decode("utf-8", "replace")
@@ -34,68 +28,63 @@ def get(url, headers=None):
         return None, "FEIL %s" % e
 
 
-def biggest_list(obj):
-    """Finn storste liste-av-dicts (sannsynlig produkt-array) + stien dit."""
-    best = [None, []]
-    def walk(o, p):
-        if isinstance(o, list):
-            if o and isinstance(o[0], dict) and len(o) > len(best[1]):
-                best[0], best[1] = p, o
-            for v in o[:2]:
-                walk(v, p + "[]")
-        elif isinstance(o, dict):
-            for k, v in o.items():
-                walk(v, p + "." + k)
-    walk(obj, "")
-    return best[0], best[1]
+def items_of(d):
+    if isinstance(d.get("items"), list):
+        return d["items"]
+    res = d.get("result")
+    if isinstance(res, dict) and isinstance(res.get("items"), list):
+        return res["items"]
+    return []
+
+
+def summarize(label, url):
+    st, body = get(url)
+    print("== %s -> %s, %dB ==" % (label, st, len(body)))
+    if st != 200 or not body:
+        return None
+    d = json.loads(body)
+    for k in ("found", "rows_per_page", "more", "rows"):
+        if k in d:
+            print("   %s = %s" % (k, json.dumps(d[k])[:80]))
+    items = items_of(d)
+    print("   items: %d" % len(items))
+    return d, items
 
 
 def main():
-    print("probe_bull_es v3\n")
-    for label, url in [("uten facet", BASE + "/api/navigation/product"),
-                       ("med vendor-facet", BASE + "/api/navigation/product?product_vendor%5B0%5D=13524&query=")]:
-        st, body = get(url)
-        print("== %s -> %s, %dB ==" % (label, st, len(body)))
-        if st != 200 or not body:
-            continue
-        try:
-            d = json.loads(body)
-        except Exception as e:
-            print("   ikke JSON:", e, "| starter:", repr(body[:120]))
-            continue
-        if isinstance(d, dict):
-            print("   topp-nokler:", list(d.keys())[:20])
-        path, items = biggest_list(d)
-        print("   produkt-array: '%s'  antall=%d" % (path, len(items)))
-        if items:
-            it = items[0]
-            print("   felt i ett produkt:", list(it.keys()))
-            # let etter interessante felt
-            for probe_key in ["url", "path", "vendor", "brand", "category", "categories",
-                              "sku", "code", "variation", "variations", "size", "sizes",
-                              "stock", "price", "gtin", "ean", "title", "name"]:
-                for k in it:
-                    if probe_key in k.lower():
-                        v = it[k]
-                        vs = json.dumps(v, ensure_ascii=False)
-                        print("     ~%-10s %s = %s" % (probe_key, k, vs[:160]))
-                        break
-        print()
+    print("probe_bull_es v4\n")
+    res = summarize("Asics-facet side 0", BASE + FACET)
+    if not res:
+        return
+    d, items = res
+    if items:
+        it = items[0]
+        print("\n== felt i ett produkt ==")
+        print("  ", list(it.keys()))
+        print("\n== fullt produkt (forste 2600 tegn) ==")
+        print(json.dumps(it, ensure_ascii=False, indent=1)[:2600])
 
-    # ett fullt eksempelprodukt (untruncated-ish) fra uten-facet
-    st, body = get(BASE + "/api/navigation/product")
-    if st == 200:
-        d = json.loads(body)
-        _, items = biggest_list(d)
-        # finn et Asics-produkt hvis mulig
-        sample = items[0] if items else None
-        for it in items:
-            blob = json.dumps(it, ensure_ascii=False).lower()
-            if "asics" in blob:
-                sample = it
-                break
-        print("== ett (Asics-) eksempelprodukt, forste 2200 tegn ==")
-        print(json.dumps(sample, ensure_ascii=False, indent=1)[:2200])
+    # paginering
+    print("\n== paginering ==")
+    _, body2 = get(BASE + FACET + "&page=1")
+    if body2:
+        d2 = json.loads(body2)
+        it2 = items_of(d2)
+        first0 = json.dumps(items[0], ensure_ascii=False)[:80] if items else ""
+        first1 = json.dumps(it2[0], ensure_ascii=False)[:80] if it2 else ""
+        print("   side1 items=%d  side1[0]!=side0[0]: %s" % (len(it2), first0 != first1))
+
+    # kategori-facet: finn lopesko-IDen til filtrering
+    print("\n== kategori-facets (for a finne lopesko-ID) ==")
+    facets = (d.get("facets") or {})
+    if isinstance(facets, dict):
+        for fname, fval in facets.items():
+            its = fval.get("items") if isinstance(fval, dict) else None
+            if its and any("sko" in (x.get("name", "").lower()) for x in its if isinstance(x, dict)):
+                print("   facet '%s':" % fname)
+                for x in its[:20]:
+                    if isinstance(x, dict):
+                        print("      %s (key=%s, count=%s)" % (x.get("name"), x.get("search_key"), x.get("count")))
 
 
 if __name__ == "__main__":
