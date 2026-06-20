@@ -22,8 +22,12 @@ TITLE_RE = re.compile(r"<title>([^<|]+)", re.I)
 # Full Asics colorway-kode: 4 siffer + bokstav + 3 siffer + «-» + 2-3 siffer.
 CODE_RE = re.compile(r"(\d{4}[A-Za-z]\d{3}-\d{2,3})")
 CODE_IMG_RE = re.compile(r"/product_image/(\d{4}[a-z]\d{3}-\d{2,3})", re.I)
+# Asics-farger er VERSALER («BLACK/NEW LEAF»). Versal-krav avviser bærekraft-
+# blurben («prosess som reduserer vannforbruk…») som tidligere ble fanget.
 FARGE_RE = re.compile(
-    r"Farge[\s:]{0,8}(?:<[^>]*>\s*){0,3}([A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9/ .&-]{2,40})", re.I)
+    r"Farge\s*:?\s*(?:<[^>]*>\s*){0,3}([A-ZÆØÅ][A-ZÆØÅ0-9/ .&'’-]{2,40})")
+# Asics barnesko-markører: GS (grade school) / PS (pre school) / TS (toddler).
+KIDS_RE = re.compile(r"\b(?:GS|PS|TS)\b")
 PRICE_RE = re.compile(r"(\d[\d\s\u00a0]{2,7})\s*,-")
 SELECT_RE = re.compile(r"<select[^>]*>(.*?)</select>", re.S | re.I)
 OPTION_RE = re.compile(r"<option[^>]*>([^<]+)</option>", re.I)
@@ -68,8 +72,10 @@ def _sizes(html: str) -> list[dict]:
     return sizes
 
 
-def parse(html: str, url: str = "") -> dict:
+def parse(html: str, url: str = "") -> dict | None:
     og_title = (OG_TITLE_RE.search(html) or [None, ""])[1] if OG_TITLE_RE.search(html) else ""
+    if KIDS_RE.search((og_title or "").upper()):
+        return None                       # barnesko (GS/PS/TS) — utenfor scope
     model, gender = _model_gender(og_title)
 
     # merke fra <title>-prefiks («ASICS Gel-Kayano 31 …»), ellers Asics
@@ -104,6 +110,10 @@ def parse(html: str, url: str = "") -> dict:
 
     og_img = im.group(1) if im else None
 
+    sizes = _sizes(html)
+    if not code and not sizes:
+        return None                       # ingen kode + ingen størrelse = umatchbar (utsolgt)
+
     return {
         "store": {"slug": "bull", "name": "Bull Ski & Kajakk", "source": "scrape", "network": None},
         "brand": brand or "Asics",
@@ -118,7 +128,7 @@ def parse(html: str, url: str = "") -> dict:
         "url": url,
         "currency": "NOK",
         "price": price,
-        "sizes": _sizes(html),
+        "sizes": sizes,
     }
 
 
