@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-probe_brukas.py — kartlegg Brukas Sport (nopCommerce) for Prislop.
+probe_brukas.py (v2) — las discovery + parser for Brukas (nopCommerce).
 
-nopCommerce, server-rendret HTML. Proben svarer pa:
-  A) DISCOVERY — finnes en produsentside /asics som lister alle Asics paginert?
-     Hvis ikke: kategori (/joggesko-herre osv.) + ?manufacturerids=<asics-id>.
-     Finner produktlenke-monster, ?pagenumber=N-paginering, og Asics-produsent-id
-     fra kategori-filteret.
-  B) PARSE — pa en Asics-produktside: pris, SKU/GTIN, STORRELSER m/ per-storrelse
-     lager, farge, produsent-kode (Asics colorway), merke.
-
-Kjores i GitHub Actions. Skriver ingenting til DB.
+1) Discovery: er /asics en ekte Asics-produsentside? (sammenlign med fake-slug)
+   Virker ?manufacturerids=169 server-side pa kategoriene?
+2) Parser: dump JSON-LD pa en produktside -> har variantene pris + lager (og
+   hvordan er storrelse kodet)? Hvor ligger hovedprisen?
 """
 from __future__ import annotations
+import json
 import re
 import urllib.request
 import urllib.error
@@ -20,12 +16,9 @@ from urllib.parse import urljoin
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.brukas.no"
-
-# nopCommerce produkt-tittel-anker i lister: <h2 class="product-title"><a href=...>
 PROD_TITLE = re.compile(r'class="product-title"[^>]*>\s*<a[^>]*href="([^"#?]+)"', re.I)
 PAGENUM = re.compile(r'[?&]pagenumber=(\d+)', re.I)
-MANUF_ID = re.compile(r'manufacturerids?=(\d+)', re.I)
-HREF = re.compile(r'href="([^"#]+)"', re.I)
+LD = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S | re.I)
 
 
 def get(url):
@@ -39,104 +32,70 @@ def get(url):
         return None, "FEIL %s" % e
 
 
-def prod_links(html):
-    out = []
-    seen = set()
+def slugs(html):
+    out, seen = [], set()
     for m in PROD_TITLE.finditer(html):
-        u = urljoin(BASE, m.group(1))
+        u = urljoin(BASE, m.group(1)).replace(BASE, "")
         if u not in seen:
             seen.add(u)
             out.append(u)
     return out
 
 
-def windows(html, needle, n=3, pad=110):
-    out, start = [], 0
-    low = html.lower()
-    for _ in range(n):
-        i = low.find(needle.lower(), start)
-        if i < 0:
-            break
-        out.append(re.sub(r"\s+", " ", html[max(0, i - pad):i + len(needle) + pad]))
-        start = i + len(needle)
-    return out
-
-
 def main():
-    print("probe_brukas — nopCommerce-kartlegging\n")
+    print("probe_brukas v2\n")
 
-    print("== A1) produsentside-kandidater ==")
-    asics_listing = None
-    for path in ["/asics", "/merker/asics", "/produsent/asics", "/manufacturer/asics", "/brands/asics"]:
+    print("== 1a) /asics ekte? (vs fake-slug) ==")
+    for path in ["/asics", "/asics?pagenumber=2", "/asics-fake-xyz-123", "/joggesko-herre?manufacturerids=169"]:
         st, html = get(BASE + path)
-        links = prod_links(html) if html else []
-        pages = sorted(set(int(x) for x in PAGENUM.findall(html))) if html else []
-        print("   %-22s -> %s  produkt-lenker=%d  pagenumber=%s" %
-              (path, st, len(links), pages[-3:] if pages else "ingen"))
-        if st == 200 and links and asics_listing is None:
-            asics_listing = (path, html, links)
+        sl = slugs(html)
+        pages = sorted(set(int(x) for x in PAGENUM.findall(html)))
+        asics = [s for s in sl if s.startswith("/asics-")]
+        print("   %-38s -> %s  prod=%2d  asics-slug=%2d  maxpage=%s" %
+              (path, st, len(sl), len(asics), pages[-1] if pages else "-"))
+        if "asics" in path and "fake" not in path and sl:
+            print("        eksempler:", sl[:4])
 
-    print("\n== A2) kategori /joggesko-herre: produkter + Asics-filter ==")
-    st, cat = get(BASE + "/joggesko-herre")
-    cat_links = prod_links(cat)
-    pages = sorted(set(int(x) for x in PAGENUM.findall(cat)))
-    mids = sorted(set(MANUF_ID.findall(cat)))
-    print("   status=%s  produkt-lenker=%d  pagenumber=%s  manufacturerids=%s" %
-          (st, len(cat_links), pages[-3:] if pages else "ingen", mids))
-    print("   eksempel-produktlenker:", [u.replace(BASE, "") for u in cat_links[:4]])
-    print("   'Asics' i filter-markup:")
-    for w in windows(cat, "asics", n=3):
-        print("      ...%s..." % w)
+    print("\n== 1b) manufacturerids=169 pa lopekategoriene ==")
+    for cat in ["/joggesko-dame", "/joggesko-herre", "/terrengsko-dame", "/terrengsko-herre"]:
+        st, html = get("%s%s?manufacturerids=169" % (BASE, cat))
+        sl = slugs(html)
+        asics = [s for s in sl if s.startswith("/asics-")]
+        pages = sorted(set(int(x) for x in PAGENUM.findall(html)))
+        print("   %-22s -> prod=%2d (asics-slug=%2d) maxpage=%s" %
+              (cat, len(sl), len(asics), pages[-1] if pages else "-"))
 
-    # finn en Asics-produktside a parse
-    sample = None
-    if asics_listing:
-        sample = asics_listing[2][0]
-    else:
-        for u in cat_links:
-            if "asics" in u.lower():
-                sample = u
-                break
-    if not sample and mids:
-        # prov manufacturerids-filter pa kategorien
-        st, f = get("%s/joggesko-herre?manufacturerids=%s" % (BASE, mids[0]))
-        fl = prod_links(f)
-        print("\n   /joggesko-herre?manufacturerids=%s -> %d produkter %s" %
-              (mids[0], len(fl), [u.replace(BASE, "") for u in fl[:3]]))
-        if fl:
-            sample = fl[0]
-
-    print("\n== B) parse-mal pa produktside ==")
-    if not sample:
-        print("   fant ingen Asics-produktside a teste")
-        return
-    print("   sample:", sample)
-    st, p = get(sample)
-    print("   status=%s  lengde=%d" % (st, len(p)))
-    # pris
-    price = re.search(r'class="[^"]*price[^"]*"[^>]*>\s*([\d  .\u00a0]+,-|\d[\d  .\u00a0]*kr)', p, re.I)
-    print("   pris:", price.group(1).strip() if price else "?")
-    # SKU / GTIN / produsent-kode
-    for label in ["sku", "gtin", "produktnr", "varenr", "manufacturer-part", "mpn"]:
-        for w in windows(p, label, n=1, pad=70):
-            print("   [%s] ...%s..." % (label, w))
-    # merke / produsent
-    man = re.search(r'href="([^"]*)"[^>]*>\s*Asics', p, re.I)
-    print("   produsent-lenke:", man.group(1) if man else "?")
-    # farge
-    for w in windows(p, "farge", n=1, pad=80):
-        print("   [farge] ...%s..." % w)
-    # storrelser: <select> + opsjoner, og lager-markorer
-    sel = re.search(r"<select[^>]*>(.*?)</select>", p, re.S | re.I)
-    if sel:
-        opts = re.findall(r"<option[^>]*>([^<]+)</option>", sel.group(1))
-        print("   <select>-opsjoner:", [o.strip() for o in opts][:16])
-    else:
-        print("   <select>: ingen (storrelser ligger kanskje som attributt-knapper/JS)")
-    for w in windows(p, "ikke pa lager", n=2, pad=60) or []:
-        print("   [utsolgt-markor] ...%s..." % w)
-    for w in windows(p, "stockquantity", n=1, pad=60):
-        print("   [stockquantity] ...%s..." % w)
+    print("\n== 2) produktside JSON-LD + pris ==")
+    st, p = get(BASE + "/asics-gel-nimbus-28-herre")
+    print("   status=%s lengde=%d" % (st, len(p)))
+    blocks = LD.findall(p)
+    print("   JSON-LD-blokker:", len(blocks))
+    for i, blk in enumerate(blocks):
+        try:
+            d = json.loads(blk)
+        except Exception as e:
+            print("   [%d] ikke-parsebar (%s): %s" % (i, e, blk[:120]))
+            continue
+        items = d if isinstance(d, list) else [d]
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            t = it.get("@type")
+            print("   [%d] @type=%s nokler=%s" % (i, t, list(it.keys())))
+            if t in ("Product", "ProductGroup"):
+                print("       ", json.dumps(it, ensure_ascii=False)[:1600])
+            off = it.get("offers")
+            if off:
+                offs = off if isinstance(off, list) else [off]
+                print("        offers(%d):" % len(offs))
+                for o in offs[:3]:
+                    if isinstance(o, dict):
+                        print("          ", json.dumps(o, ensure_ascii=False)[:260])
+    # hovedpris i HTML
+    for m in re.finditer(r'(price-value-\d+|product-price|prices)[^>]*>([^<]{1,30})', p, re.I):
+        print("   pris-markup:", m.group(0)[:90])
+    pv = re.search(r'\b(\d[\d \u00a0.]{1,7}),-', p)
+    print("   forste ',-'-pris:", pv.group(0) if pv else "?")
 
 
 if __name__ == "__main__":
