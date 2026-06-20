@@ -51,7 +51,8 @@ def _loplabbet(html, url):
     return [sportholding_parser.parse(html, url, "loplabbet", "Löplabbet")]
 
 def _bull(html, url):
-    return [bull_parser.parse(html, url)]
+    rec = bull_parser.parse(html, url)
+    return [rec] if rec else []
 
 def _brukas(html, url):
     # nopCommerce: én side = én (farge+størrelse); aggregeres til colorway senere
