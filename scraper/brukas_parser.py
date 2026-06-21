@@ -16,10 +16,12 @@ import json
 import re
 
 LD = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S | re.I)
-# "<Modell> <Kjønn> <Størrelse> <Farge>", merke alt strippet
+# "<Modell> <Kjønn> <Størrelse> <Farge>", merke alt strippet.
+# Størrelse forankres ETTER kjønn, så 1–2 siffer (+ evt. valgfri H, f.eks. «7H»)
+# er trygt — modell-tall (Gel-Nimbus 28) ligger foran kjønnet og fanges ikke.
 NAME_RE = re.compile(
     r"^(?P<model>.+?)\s+(?P<gender>Herre|Dame|Unisex|Barn|Junior)\s+"
-    r"(?P<size>\d{2}(?:[.,]\d)?)\s+(?P<color>.+)$", re.I)
+    r"(?P<size>\d{1,2}(?:[.,]\d)?H?)\s+(?P<color>.+)$", re.I)
 # fallback uten kjønn
 NAME_NOGENDER = re.compile(r"^(?P<model>.+?)\s+(?P<size>\d{2}(?:[.,]\d)?)\s+(?P<color>.+)$")
 _GENDER = {"herre": "herre", "dame": "dame", "unisex": "unisex",
