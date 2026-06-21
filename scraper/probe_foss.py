@@ -1,42 +1,38 @@
 #!/usr/bin/env python3
 """
-probe_foss.py — kartlegg Foss Sport (foss-sport.no) for discovery + parser.
+probe_foss.py (v2) — knekk Foss-paginering + per-variant EAN/lager.
 
-Plattform (alt bekreftet via web_fetch): Demonstrare/Multicase (ASP.NET),
-SERVER-RENDRET. Listingen /asics viser produktene i HTML med:
-  - produkt-URL `/asics/<id>/<asics-slug>`
-  - lager inline på listingen (in-stock2.png + antall «20+/5/1», no-stock2.png)
-  - colorway-kode synlig i bilde-filnavn (f.eks. «1013a162_101_…»)
+v1 fant: 30 produkter server-rendret på /asics, ingen query-param paginerer,
+listingen bruker Knockout + AJAX instant-search (mcWeb.instantSearch.doSearch,
+TotalHits client-rendret). PDP har JSON-LD (navn m/ kjønn+modell+størrelse,
+pris, availability), variant-selector (data-attribute-value-id per størrelse),
+per-størrelse-EAN i HTML, Asics-stilkode i bildefilnavn.
 
-Hva v1 må svare på (skriv IKKE parser før dette er bekreftet):
-  1) PAGINERING: gir /asics alt på én side, eller må vi paginere? Test
-     ?page=N / ?p=N / ?side=N og sammenlign produkt-URL-settene. Finn total-tall.
-  2) PDP: har produktsida per-størrelse-lager (select/dropdown med lagerstatus)?
-  3) EAN/GTIN per størrelse (broer mot XXL/Löplabbet/Brukås) — eller bare kode?
-  4) JSON-LD til stede (navn/merke/pris)? Asics-stilkode (manufacturer_code)?
+v2 svarer på de to gjenstående (skriv IKKE discovery/parser før dette):
+  A) PAGINERING: instant-search-endepunkt + parametre (producer/kategori-id,
+     page-size/skip-take) og TotalHits — får vi ALLE Asics-produktene?
+  B) PER-VARIANT: hvor ligger per-størrelse {ean, lager, pris} i PDP-HTML, og
+     hvordan mappes ean <-> størrelse (attribute-value-id)?
 
 Stdlib only. Kjøres via .github/workflows/probe.yml (script=probe_foss.py).
 """
 from __future__ import annotations
-import json
 import re
 import urllib.request
 import urllib.error
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.foss-sport.no"
-LISTING = "/asics"
 
-PROD_A = re.compile(r'href="(/asics/\d+/[^"#?]+)"', re.I)
-LD = re.compile(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
-EAN_RE = re.compile(r'\b(\d{13})\b')
-STOCK_IMG = re.compile(r'(in-stock2|no-stock2)\.png', re.I)
-CODE_IMG = re.compile(r'/(\d{4}[a-z]\d{3})_', re.I)   # Asics-stilkode i bilde-filnavn
+# rikt PDP fra v1 (8 størrelser/EAN-er) — best for variant-strukturen
+PDP = "/asics/200481/asics-dame-l%c3%b8pesko-trabuco-max-5-terrengsko-med-godt-grep-rd-sc"
+EAN_RE = re.compile(r"\b(\d{13})\b")
 
 
 def get(path):
     url = path if path.startswith("http") else BASE + path
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "nb-NO"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "nb-NO",
+                                               "X-Requested-With": "XMLHttpRequest"})
     try:
         with urllib.request.urlopen(req, timeout=40) as r:
             return r.status, r.read().decode("utf-8", "replace")
@@ -46,114 +42,93 @@ def get(path):
         return None, "FEIL %s" % e
 
 
-def prod_urls(html):
-    seen, out = set(), []
-    for h in PROD_A.findall(html):
-        if h not in seen:
-            seen.add(h)
-            out.append(h)
-    return out
-
-
-def ld_products(html):
-    res = []
-    for blk in LD.findall(html):
-        try:
-            d = json.loads(blk)
-        except Exception:
-            continue
-        for it in (d if isinstance(d, list) else [d]):
-            if isinstance(it, dict) and it.get("@type") in ("Product", "ProductGroup"):
-                res.append(it)
-    return res
-
-
-def section(html, needle, before=160, after=1800):
-    i = html.lower().find(needle.lower())
-    if i < 0:
-        return ""
-    return re.sub(r"\s+", " ", html[max(0, i - before):i + after])
+def dump_around(html, idx, before=240, after=420, label=""):
+    seg = re.sub(r"\s+", " ", html[max(0, idx - before):idx + after])
+    print("    %s%s" % (label, seg))
 
 
 def probe_pagination():
     print("=" * 78)
-    print("1) PAGINERING")
-    st, base_html = get(LISTING)
-    base_set = set(prod_urls(base_html))
-    print("  /asics -> HTTP %s, %d B, %d unike produkt-URL-er" % (st, len(base_html), len(base_set)))
+    print("A) PAGINERING / INSTANT-SEARCH-KONFIG")
+    st, html = get("/asics")
+    print("  /asics -> HTTP %s, %d B" % (st, len(html)))
 
-    # total-tall-hint
-    for needle in ["Totalt antall treff", "antall treff", "treff", "av "]:
-        sec = section(base_html, needle, 40, 120)
-        if sec:
-            print("  total-hint («%s»): …%s…" % (needle, sec[:160]))
-            break
+    # 1) full åpningstag for instant-search-containere (data-* config)
+    for m in re.finditer(r'<div[^>]*class="[^"]*d4-instant-search[^"]*"[^>]*>', html, re.I):
+        print("  container:", re.sub(r"\s+", " ", m.group(0))[:600])
 
-    # test paginerings-parametre
-    for param in ["page", "p", "side", "pagenumber"]:
-        st2, html2 = get("%s?%s=2" % (LISTING, param))
-        s2 = set(prod_urls(html2))
-        new = s2 - base_set
-        print("  ?%s=2 -> HTTP %s, %d URL-er, %d NYE vs side 1  %s"
-              % (param, st2, len(s2), len(new), "<-- PAGINERER" if len(new) >= 3 else ""))
+    # 2) JS/HTML-konfig-nøkkelord — dump regionen rundt hver første forekomst
+    for kw in ["instantSearch", "doSearch", "ProducerId", "producerId", "1002086",
+               "PageSize", "pageSize", "Skip", "Take", "TotalHits", ".ashx",
+               "/Services", "searchUrl", "data-url", "data-searchurl", "CategoryId",
+               "categoryId", "manufacturerId", "ProductListing"]:
+        i = html.find(kw)
+        if i >= 0:
+            dump_around(html, i, 120, 200, label="«%s» -> " % kw)
 
-    # paginerings-kontroller i markup
-    for needle in ["pagination", "pager", "Se hele resultatet", "vis flere", "Neste", "page=", "loadMore", "data-page"]:
-        sec = section(base_html, needle, 30, 200)
-        if sec:
-            print("  kontroll-hint («%s»): …%s…" % (needle, sec[:200]))
-    return list(base_set)[:3]
+    # 3) paginerings-/page-size-hypoteser (sammenlign produkt-URL-antall)
+    prod = re.compile(r'href="(/asics/\d+/[^"#?]+)"', re.I)
+    base_n = len(set(prod.findall(html)))
+    print("  baseline /asics: %d unike produkt-URL-er" % base_n)
+    for q in ["?PageSize=200", "?ProductListingPageSize=200", "?Take=200",
+              "?pagesize=200", "?ProductsPrPage=200", "/2", "?PageNumber=2&PageSize=200"]:
+        st2, h2 = get("/asics" + q)
+        n2 = len(set(prod.findall(h2))) if h2 else 0
+        flag = "  <-- ENDRER ANTALL" if n2 not in (0, base_n) else ""
+        print("  /asics%-32s -> HTTP %s, %d URL-er%s" % (q, st2, n2, flag))
 
 
-def probe_pdp(path):
-    print("\n" + "-" * 78)
-    print("PDP:", path)
-    st, html = get(path)
-    print("  HTTP %s, %d B" % (st, len(html)))
+def probe_variants():
+    print("\n" + "=" * 78)
+    print("B) PER-VARIANT-STRUKTUR (EAN <-> størrelse <-> lager) på PDP")
+    st, html = get(PDP)
+    print("  PDP -> HTTP %s, %d B" % (st, len(html)))
     if not html:
         return
 
-    lds = ld_products(html)
-    print("  JSON-LD Product/ProductGroup: %d" % len(lds))
-    for p in lds[:1]:
-        off = p.get("offers") or {}
-        if isinstance(off, list):
-            off = off[0] if off else {}
-        print("     name=%r brand=%s gtin=%s sku/mpn=%s price=%s avail=%s"
-              % (p.get("name"), p.get("brand"), p.get("gtin"),
-                 p.get("sku") or p.get("mpn"), off.get("price"), off.get("availability")))
+    eans = EAN_RE.findall(html)
+    print("  EAN-treff totalt: %d (unike %d)" % (len(eans), len(set(eans))))
 
-    codes = sorted(set(CODE_IMG.findall(html)))
-    print("  Asics-stilkode-kandidater (fra bilder): %s" % (codes or "INGEN"))
-    eans = sorted(set(EAN_RE.findall(html)))
-    print("  13-sifrede tall (EAN-kandidater): %s" % (eans[:8] or "INGEN"))
-    stk = STOCK_IMG.findall(html)
-    print("  lager-ikoner på PDP: %s" % ({s: stk.count(s) for s in set(stk)} or "INGEN"))
+    # dump rå-markup rundt de 2 første EAN-ene -> avslører container/JSON/felt
+    for e in list(dict.fromkeys(eans))[:2]:
+        i = html.find(e)
+        dump_around(html, i, 300, 300, label="rundt EAN %s: " % e)
 
-    # størrelses-/variant-seksjon: dump rå markup rundt sannsynlige markører
-    for needle in ["Størrelse", "St&#248;rrelse", "velg variant", "variant", "size", "På lager", "Utsolgt", "lagerstatus"]:
-        sec = section(html, needle, 120, 1600)
-        if sec:
-            print("  --- markup rundt «%s» ---" % needle)
-            print("  " + sec[:1600])
-            print("  --- slutt ---")
+    # skjulte input-felt som kan bære variant-data
+    hidden = re.findall(r'<input[^>]*type="hidden"[^>]*>', html, re.I)
+    rel = [h for h in hidden if re.search(r"ean|barcode|variant|plid|gtin|stock|sku", h, re.I)]
+    print("  relevante hidden-inputs: %d" % len(rel))
+    for h in rel[:8]:
+        print("    " + re.sub(r"\s+", " ", h)[:220])
+
+    # <script>-blokker som inneholder EAN/variant/barcode -> sannsynlig viewmodel-JSON
+    for m in re.finditer(r"<script\b[^>]*>(.*?)</script>", html, re.S | re.I):
+        body = m.group(1)
+        if re.search(r"barcode|\bean\b|gtin|variants?\b|AttributeValue|StockStatus", body, re.I) and EAN_RE.search(body):
+            print("  --- script m/ variant-data (utdrag) ---")
+            # vis rundt første EAN inni scriptet
+            j = EAN_RE.search(body).start()
+            print("    " + re.sub(r"\s+", " ", body[max(0, j - 400):j + 600]))
+            print("  --- slutt script ---")
             break
-    else:
-        print("  fant ingen åpenbar størrelses-markør — dump <select>-blokker:")
-        for m in re.findall(r"<select\b.*?</select>", html, re.S | re.I)[:2]:
-            print("  " + re.sub(r"\s+", " ", m)[:1000])
+
+    # full variant-selector (alle størrelser m/ attribute-value-id + evt. lager-klasse)
+    vm = re.search(r'<div[^>]*class="[^"]*variant-selector-container[^"]*".*?</ul>|'
+                   r'<div[^>]*class="[^"]*variant-selector-container[^"]*".*?</div>\s*</div>\s*</div>',
+                   html, re.S | re.I)
+    if vm:
+        print("  --- variant-selector (rå) ---")
+        print("    " + re.sub(r"\s+", " ", vm.group(0))[:1600])
 
 
 def main():
-    print("probe_foss v1 — Demonstrare/Multicase (server-rendret)\n")
-    pdps = probe_pagination()
-    print("\n2-4) PDP-INSPEKSJON (per-størrelse-lager / EAN / kode / JSON-LD)")
-    for p in pdps:
-        probe_pdp(p)
+    print("probe_foss v2 — paginering + per-variant\n")
+    probe_pagination()
+    probe_variants()
     print("\nKONKLUSJON-HINT:")
-    print("  * Pagineringen avgjør discovery-modus (ny: 'demonstrare_pages').")
-    print("  * Har PDP per-størrelse-lager + EAN -> parser som SportHolding (EAN-bro).")
-    print("  * Kun colorway-kode (ingen EAN) -> match på kode, som Bull/Intersport.")
+    print("  A: finnes en endepunkt-URL + producer/kategori-id + page-size -> discovery 'demonstrare_search'.")
+    print("     Hvis en page-size-param ENDRER antallet -> enkel server-paginering, ingen AJAX nødvendig.")
+    print("  B: EAN i hidden-input/script keyed på attribute-value-id -> map ean<->størrelse<->lager i parser.")
 
 
 if __name__ == "__main__":
