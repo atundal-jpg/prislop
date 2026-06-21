@@ -31,7 +31,7 @@ from urllib.parse import quote_plus, urlencode, urljoin
 import uuid
 
 import xxl_parser, torshov_parser, bull_parser, brukas_parser
-import sportholding_parser
+import sportholding_parser, foss_parser
 from loader import xxl_to_offers
 
 
@@ -40,7 +40,27 @@ def _xxl(html, url):
     return xxl_to_offers(xxl_parser.parse_xxl(html))
 
 def _torshov(html, url):
-    return [torshov_parser.parse_torshov(html, url)]
+    rec = torshov_parser.parse_torshov(html, url)
+    # Torshovs kategori-feed tar med barnesko (f.eks. «GT-1000 13 PS») som
+    # mangler kjønnsord i tittelen → _gender gir «unisex» og de lakk gjennom.
+    # Drop på eksplisitt barn/junior ELLER barne-størrelsesklasse-kode i navnet
+    # (PS/GS/TS/TD som egne ord). XXL filtrerer alt nå tilsvarende.
+    if _is_kids(rec):
+        return []
+    return [rec]
+
+
+# Barne-størrelsesklasser som egne ord i modellnavnet (versal): PS/GS/TS/TD.
+_KIDS_NAME_RE = re.compile(r"\b(PS|GS|TS|TD)\b")
+
+
+def _is_kids(rec: dict) -> bool:
+    if (rec.get("gender") or "").lower() == "barn":
+        return True
+    model = rec.get("model") or ""
+    if _KIDS_NAME_RE.search(model):
+        return True
+    return bool(re.search(r"\b(barn|junior)\b", model, re.I))
 
 def _intersport(html, url):
     return [sportholding_parser.parse(html, url, "intersport", "Intersport")]
@@ -59,6 +79,12 @@ def _brukas(html, url):
     # nopCommerce: én side = én (farge+størrelse); aggregeres til colorway senere
     rec = brukas_parser.parse_size(html, url)
     return [rec] if rec else []
+
+
+def _foss(html, url):
+    # Demonstrare: én PDP = én colorway m/ JSON-LD ProductGroup.hasVariant.
+    # foss_parser.parse returnerer alt en liste ([] for ikke-sko/barn/ugyldig).
+    return foss_parser.parse(html, url)
 
 
 # --- Butikk-konfig ----------------------------------------------------------
@@ -171,6 +197,19 @@ STORES = {
         "brand_re": re.compile(r"/asics-[a-z0-9-]+", re.I),
         "adapter": _brukas,
         "aggregate": brukas_parser.aggregate,
+    },
+    # Foss Sport (Demonstrare/Multicase, server-rendret). Listingen er AJAX og
+    # tar bare 30/side, men sitemap-en lister alle produkt-URL-ene. Vi enumererer
+    # Asics-produkter derfra (/asics/<id>/…). foss_parser leser JSON-LD
+    # ProductGroup.hasVariant (per-str EAN + lager) og er det autoritative
+    # sko-filteret (sitemap-en har også klær/sokker/tights) -> ingen sko mistes.
+    "foss": {
+        "name": "Foss Sport",
+        "base": "https://www.foss-sport.no",
+        "mode": "foss_sitemap",
+        "sitemap": "https://www.foss-sport.no/sitemap.xml",
+        "prod_re": re.compile(r"/asics/\d+/", re.I),   # Asics-produkt-URL-markør
+        "adapter": _foss,
     },
 }
 
@@ -495,6 +534,48 @@ def _nopcommerce_paths(cfg: dict) -> list[str]:
     return size_urls
 
 
+def _foss_paths(cfg: dict) -> list[str]:
+    """Enumerer Asics-produkt-URL-er fra Foss' sitemap (/asics/<id>/…).
+    Sitemap-en kan være en indeks; vi følger .xml-barn med tak. Returnerer ALLE
+    Asics-produkter (også klær) — foss_parser dropper ikke-sko, så vi mister
+    aldri en sko pga. uventet slug. Server-rendret PDP, ingen AJAX-reversering."""
+    import urllib.parse
+    base = cfg["base"]
+    prod_re = cfg["prod_re"]
+    loc_re = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+    headers = {"User-Agent": "Mozilla/5.0 (prislop)", "Accept-Language": "nb-NO"}
+
+    def fetch(url):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=45) as r:
+                return r.read().decode("utf-8", "replace")
+        except Exception as e:
+            print(f"  [foss] feil {url}: {e}")
+            return ""
+
+    queue, visited = [cfg["sitemap"]], 0
+    out, seen = [], set()
+    while queue and visited < 15:
+        sm = queue.pop(0)
+        visited += 1
+        locs = loc_re.findall(fetch(sm))
+        children = [l for l in locs if l.lower().endswith(".xml")]
+        if children:                       # sitemap-indeks -> følg barna
+            queue.extend(children[:15])
+            continue
+        for loc in locs:
+            if not prod_re.search(loc):
+                continue
+            # normaliser host/scheme (sitemap kan ha http://foss-sport.no uten www)
+            full = urljoin(base, urllib.parse.urlparse(loc).path)
+            if full.startswith(base) and full not in seen:
+                seen.add(full)
+                out.append(full)
+    print(f"  [foss] sitemap -> {len(out)} Asics-produkt-URL-er (sko filtreres i parser)")
+    return out
+
+
 def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -> list[str]:
     cfg = STORES[store_slug]
 
@@ -586,6 +667,13 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         if store_slug in _LIST_CACHE:
             return _LIST_CACHE[store_slug]
         _LIST_CACHE[store_slug] = _nopcommerce_paths(cfg)[:2000]
+        return _LIST_CACHE[store_slug]
+
+    # Foss (Demonstrare): enumerer Asics-produkter fra sitemap.
+    if cfg.get("mode") == "foss_sitemap":
+        if store_slug in _LIST_CACHE:
+            return _LIST_CACHE[store_slug]
+        _LIST_CACHE[store_slug] = _foss_paths(cfg)[:1000]
         return _LIST_CACHE[store_slug]
 
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
