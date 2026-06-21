@@ -25,6 +25,7 @@ URL-status (verifisert mot live sider juni 2026):
 from __future__ import annotations
 import json
 import re
+import time
 import urllib.request
 from urllib.parse import quote_plus, urlencode, urljoin
 import uuid
@@ -406,17 +407,48 @@ def _bull_api_paths(cfg: dict) -> list[str]:
     return out
 
 
+# Brukås størrelses-grid: <span id="v2" class="button-dropdown"> med ett
+# <a href="…"> per størrelse (valgt størrelse har class="active"). Verifisert
+# juni 2026 (probe v4). Listingen viser kun colorway-ens default-størrelse, så
+# vi må lese gridet fra hver colorway-side for å få HELE størrelses-raden.
+_BRUKAS_SIZE_SPAN = re.compile(
+    r'<span\s+id="v2"[^>]*class="[^"]*button-dropdown[^"]*"[^>]*>(.*?)</span>',
+    re.S | re.I)
+_BRUKAS_SIZE_A = re.compile(r'<a\b[^>]*href="([^"#?]+)"', re.I)
+
+
+def _brukas_size_urls(html: str, base: str, brand_re) -> list[str]:
+    """Fra én Brukås colorway-side: alle søsken-størrelses-URL-er fra
+    størrelses-gridet. Tom liste hvis gridet ikke finnes (enkeltstørrelse)."""
+    m = _BRUKAS_SIZE_SPAN.search(html)
+    if not m:
+        return []
+    out = []
+    for href in _BRUKAS_SIZE_A.findall(m.group(1)):
+        if not brand_re.search(href):
+            continue
+        full = urljoin(base, href)
+        if full.startswith(base):
+            out.append(full)
+    return out
+
+
 def _nopcommerce_paths(cfg: dict) -> list[str]:
     """Enumerer Asics-løpesko-URL-er fra en nopCommerce-butikk (Brukås).
-    Server-rendret. Paginerer hver løpekategori med ?pagenumber=N (1-indeksert,
-    siste side leses fra pager-lenkene) og beholder produkt-slugs som matcher
-    brand_re (/asics-…). Hvert produkt er én størrelse; aggregeres senere."""
+    Server-rendret. To trinn:
+      1) Paginer hver løpekategori (?pagenumber=N) -> én colorway-URL hver
+         (default-størrelsen), slug matcher brand_re (/asics-…).
+      2) Hent hver colorway-side og les størrelses-gridet -> ALLE søsken-
+         størrelses-URL-er. Hver størrelse er egen side med egen JSON-LD
+         (str + lager + EAN); parse_size + aggregate() grupperer til colorway.
+    Resultat: ~1 URL per (colorway × størrelse), ikke 1 per colorway."""
     base = cfg["base"]
     brand_re = cfg["brand_re"]
     title_re = re.compile(r'class="product-title"[^>]*>\s*<a[^>]*href="([^"#?]+)"', re.I)
     page_re = re.compile(r'[?&]pagenumber=(\d+)', re.I)
     headers = {"User-Agent": "Mozilla/5.0 (prislop)", "Accept-Language": "nb-NO"}
-    out, seen = [], set()
+    delay = cfg.get("expand_delay", 0.7)   # høflig pause mellom grid-lesninger
+    colorways, seen = [], set()
 
     def fetch(url):
         try:
@@ -434,8 +466,9 @@ def _nopcommerce_paths(cfg: dict) -> list[str]:
             full = urljoin(base, href)
             if full.startswith(base) and full not in seen:
                 seen.add(full)
-                out.append(full)
+                colorways.append(full)
 
+    # Trinn 1: colorway-URL-er fra kategori-listingene.
     for cat in cfg["categories"]:
         first = fetch(f"{base}{cat}")
         if not first:
@@ -445,7 +478,21 @@ def _nopcommerce_paths(cfg: dict) -> list[str]:
         last = min(last, cfg.get("max_pages", 20))
         for page in range(2, last + 1):
             collect(fetch(f"{base}{cat}?pagenumber={page}"))
-    return out
+
+    # Trinn 2: utvid hver colorway til alle størrelses-URL-er via gridet.
+    size_urls, size_seen = [], set()
+    for cw in colorways:
+        html = fetch(cw)
+        sizes = _brukas_size_urls(html, base, brand_re) if html else []
+        if not sizes:                       # enkeltstørrelse: behold colorway-URL
+            sizes = [cw]
+        for u in sizes:
+            if u not in size_seen:
+                size_seen.add(u)
+                size_urls.append(u)
+        time.sleep(delay)
+    print(f"  [brukas] {len(colorways)} colorways -> {len(size_urls)} størrelses-URL-er")
+    return size_urls
 
 
 def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -> list[str]:
