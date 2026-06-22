@@ -7,12 +7,13 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_foss.py
+        default: probe_olympia.py
         options:
           - probe_brukas.py
           - probe_bull_es.py
           - probe_sportholding_listing.py
           - probe_foss.py
+          - probe_olympia.py
 
 jobs:
   probe:
