@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-probe_olympia.py (v2) — knekk produkt-lenke-mønster + PDP-struktur.
+probe_olympia.py (v3) — finn produkt-URL-ene (ItemList/frekvens) + tile-markup.
 
-v1: nopCommerce bekreftet, paginering finnes (/asfaltsko=7 sider, /joggesko-*=5,
-/terrengsko=3), MEN produkt-lenkene ble ikke fanget (ingen `product-title`-klasse;
-slug uten «asics»). v2 dumper ekte listing-markup, trekker ut produkt-URL-ene via
-BILDE-ankeret (robust uansett klasse), og prober PDP-er.
-
-Avgjør: produkt-URL-mønster + paginering (A), og PDP-struktur (B1 Brukås-grid vs
-B2 nopCommerce størrelses-select vs JSON-LD hasVariant) + EAN/kode (C).
+v2 bommet: produkt-bilder er lazy (data-src), og første b-cdn.net var IE-banneret.
+Theme = «Element» (nopCommerce). v3:
+  1) JSON-LD ItemList på kategorisida -> produkt-URL-er rett ut (reneste).
+  2) Frekvens-basert: interne 1-ledds-slugs (ekskl. nav) som opptrer >=2x = produkter.
+  3) Rå-dump rundt data-productid / item-box / product-item -> ekte tile-struktur.
+  4) Prober PDP-er fra funnene (JSON-LD/grid/select + EAN/kode).
 Stdlib only. probe.yml (script=probe_olympia.py).
 """
 from __future__ import annotations
@@ -16,23 +15,22 @@ import json
 import re
 import urllib.request
 import urllib.error
+from collections import Counter
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.olympiasport.no"
-LISTING = "/asfaltsko"   # 7 sider — flest løpesko
+LISTING = "/asfaltsko"
 
-# produkt-tile: et anker som omslutter et produkt-bilde (CDN). Robust mot klasse.
-IMG_A = re.compile(r'<a\s+href="(/[^"#?]+)"[^>]*>\s*(?:<picture\b|<img\b)', re.I)
-CDN_A = re.compile(r'<a\s+href="(/[^"#?]+)"[^>]*>(?:(?!</a>).)*?b-cdn\.net', re.I | re.S)
 LD = re.compile(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
+HREF = re.compile(r'href="(/[a-z0-9%æøå][a-z0-9%æøå\-/]*)"', re.I)
 EAN_RE = re.compile(r'\b(\d{13})\b')
 CODE_RE = re.compile(r'/(\d{4}[a-z]\d{3})[_-]', re.I)
 GRID_SPAN = re.compile(r'<span[^>]*class="[^"]*button-dropdown[^"]*"[^>]*>(.*?)</span>', re.S | re.I)
 SELECT = re.compile(r'<select\b.*?</select>', re.S | re.I)
-NAV = {"sko","lopesko","asfaltsko","terrengsko","platesko","joggesko-dame",
-       "joggesko-herre","saucony-endorphin-serien","lopeklar-2","tursko","fritidssko",
-       "arbeidssko","vernesko","sandaler","kajakk","bekledning","sportsutstyr","ski",
-       "register","login","wishlist","cart","asics","outlet","nyheter","blogg"}
+NAV = {"sko","lopesko","asfaltsko","terrengsko","platesko","joggesko-dame","joggesko-herre",
+       "saucony-endorphin-serien","lopeklar-2","tursko","fritidssko","arbeidssko","vernesko",
+       "sandaler","kajakk","bekledning","sportsutstyr","ski","register","login","wishlist",
+       "cart","asics","outlet","nyheter","blogg","s%c3%a5ler","havkajakk","surfski"}
 
 
 def get(path):
@@ -47,41 +45,77 @@ def get(path):
         return None, "FEIL %s" % e
 
 
-def product_urls(html):
-    urls = []
-    for rx in (IMG_A, CDN_A):
-        for h in rx.findall(html):
-            seg = h.strip("/").split("/")[0].split("?")[0]
-            if seg and seg not in NAV and h not in urls:
-                urls.append(h)
-    return urls
+def itemlist_urls(html):
+    out = []
+    for blk in LD.findall(html):
+        try:
+            d = json.loads(blk)
+        except Exception:
+            continue
+        for it in (d if isinstance(d, list) else [d]):
+            if isinstance(it, dict) and it.get("@type") in ("ItemList", "CollectionPage"):
+                for el in it.get("itemListElement") or []:
+                    u = (el.get("url") if isinstance(el, dict) else None) or \
+                        (el.get("item", {}).get("url") if isinstance(el, dict) and isinstance(el.get("item"), dict) else None)
+                    if u:
+                        out.append(u)
+    return out
+
+
+def freq_slugs(html):
+    c = Counter()
+    for h in HREF.findall(html):
+        seg = h.strip("/").split("/")[0].lower()
+        if "/" in h.strip("/"):
+            continue                      # bare 1-ledds-slugs
+        if seg and seg not in NAV and not seg.startswith(("register","login","cart","wishlist")):
+            c[h] += 1
+    return c
+
+
+def dump_around(html, needle, n=700):
+    i = html.lower().find(needle.lower())
+    if i < 0:
+        return None
+    return re.sub(r"\s+", " ", html[max(0, i-120):i+n])
 
 
 def probe_listing():
     print("=" * 78)
-    print("A) LISTING-MARKUP + PRODUKT-LENKER (/asfaltsko)")
+    print("A) PRODUKT-URL-er (/asfaltsko)")
     st, html = get(LISTING)
     print("  HTTP %s, %d B" % (st, len(html)))
 
-    # dump rå markup rundt første produkt-bilde (avslører tile-strukturen)
-    m = re.search(r"b-cdn\.net", html)
-    if m:
-        a = html.rfind("<a", max(0, m.start() - 600), m.start())
-        seg = html[a if a >= 0 else m.start() - 400:m.start() + 200]
-        print("  --- rå tile rundt første produkt-bilde ---")
-        print("  " + re.sub(r"\s+", " ", seg)[:900])
-        print("  --- slutt ---")
-
-    urls = product_urls(html)
-    print("  produkt-URL-er (via bilde-anker): %d" % len(urls))
-    for u in urls[:8]:
+    il = itemlist_urls(html)
+    print("  JSON-LD ItemList-URL-er: %d" % len(il))
+    for u in il[:6]:
         print("    ", u)
 
-    # paginering: side 2 gir nye?
-    st2, html2 = get(LISTING + "?pagenumber=2")
-    u2 = product_urls(html2)
-    print("  side 2: %d produkt-URL-er, %d nye vs side 1" % (len(u2), len(set(u2) - set(urls))))
-    return urls[:3]
+    c = freq_slugs(html)
+    cands = [u for u, n in c.most_common() if n >= 2]
+    print("  Frekvens-kandidater (>=2x, ekskl. nav): %d" % len(cands))
+    for u in cands[:12]:
+        print("     %2dx  %s" % (c[u], u))
+
+    # rå tile-struktur
+    for marker in ["data-productid", "item-box", "product-item", "producttitle", "product-title", "productGridProducts"]:
+        seg = dump_around(html, marker)
+        if seg:
+            print("  --- rå markup rundt «%s» ---" % marker)
+            print("  " + seg[:760])
+            print("  --- slutt ---")
+            break
+
+    chosen = il or cands
+    # normaliser til paths
+    paths = []
+    for u in chosen:
+        p = u
+        if u.startswith("http"):
+            p = "/" + u.split("/", 3)[3] if u.count("/") >= 3 else u
+        if p not in paths:
+            paths.append(p)
+    return paths[:3]
 
 
 def probe_pdp(path):
@@ -91,7 +125,7 @@ def probe_pdp(path):
     print("  HTTP %s, %d B" % (st, len(html)))
     if not html:
         return
-    found_ld = False
+    ok = False
     for blk in LD.findall(html):
         try:
             d = json.loads(blk)
@@ -99,53 +133,45 @@ def probe_pdp(path):
             continue
         for it in (d if isinstance(d, list) else [d]):
             if isinstance(it, dict) and it.get("@type") in ("Product", "ProductGroup"):
-                found_ld = True
+                ok = True
                 off = it.get("offers") or {}
                 if isinstance(off, list):
                     off = off[0] if off else {}
                 hv = it.get("hasVariant") or []
                 print("  JSON-LD %s: name=%r gtin=%s sku=%s price=%s avail=%s hasVariant=%d"
-                      % (it.get("@type"), it.get("name"),
-                         it.get("gtin") or it.get("gtin13"), it.get("sku"),
-                         off.get("price"), off.get("availability"), len(hv)))
+                      % (it.get("@type"), it.get("name"), it.get("gtin") or it.get("gtin13"),
+                         it.get("sku"), off.get("price"), off.get("availability"), len(hv)))
                 if hv and isinstance(hv[0], dict):
-                    v = hv[0]
-                    print("      variant[0]: size=%s gtin13=%s avail=%s"
-                          % (v.get("size"), v.get("gtin13"),
-                             ((v.get("offers") or {}) if not isinstance(v.get("offers"), list) else {}).get("availability")))
-    if not found_ld:
+                    print("      variant[0]: size=%s gtin13=%s" % (hv[0].get("size"), hv[0].get("gtin13")))
+    if not ok:
         print("  JSON-LD Product/ProductGroup: INGEN")
-
     gm = GRID_SPAN.search(html)
     if gm:
         hrefs = re.findall(r'href="([^"#?]+)"', gm.group(1))
-        print("  [B1] button-dropdown-GRID: %d søsken-lenker (Brukås-stil)" % len(hrefs))
+        print("  [B1] button-dropdown-GRID: %d søsken-lenker" % len(hrefs))
         for h in hrefs[:6]:
             print("       ", h)
     sels = [s for s in SELECT.findall(html) if re.search(r"st\xf8rrelse|size|str\b", s, re.I)]
     if sels:
         opts = re.findall(r"<option[^>]*>(.*?)</option>", sels[0], re.S)
-        print("  [B2] størrelses-SELECT: %d options inline" % len(opts))
+        print("  [B2] størrelses-SELECT: %d options" % len(opts))
         print("       ", " | ".join(re.sub(r"\s+", " ", o).strip() for o in opts[:12]))
     if not gm and not sels:
-        i = html.lower().find("st\xf8rrelse")
-        print("  Verken grid eller select — rundt «Størrelse»:")
-        print("   ", re.sub(r"\s+", " ", html[max(0, i-100):i+1400])[:1400] if i >= 0 else "(ikke funnet)")
-
+        seg = dump_around(html, "st\xf8rrelse", 1300)
+        print("  rundt «Størrelse»:", (seg[:1300] if seg else "(ikke funnet)"))
     print("  EAN-kandidater:", sorted(set(EAN_RE.findall(html)))[:6] or "INGEN")
     print("  stilkode-kandidater:", sorted(set(CODE_RE.findall(html)))[:4] or "INGEN")
 
 
 def main():
-    print("probe_olympia v2 — produkt-lenker + PDP-struktur\n")
+    print("probe_olympia v3 — ItemList/frekvens + tile-markup\n")
     pdps = probe_listing()
     print("\nB/C) PDP-INSPEKSJON")
     for p in pdps:
         probe_pdp(p)
     print("\nKONKLUSJON-HINT:")
-    print("  B1 grid m/ søsken-URL-er -> gjenbruk Brukås (parse per str + aggregate).")
-    print("  B2 size-select inline   -> enkel inline-parser (én PDP = colorway).")
-    print("  JSON-LD hasVariant+gtin13 -> som Foss (per-str EAN rett fra JSON-LD).")
+    print("  ItemList eller frekvens-slugs gir produkt-URL-mønsteret for discovery.")
+    print("  PDP: grid=B1(Brukås) | select=B2(inline) | hasVariant+gtin13=Foss-stil.")
 
 
 if __name__ == "__main__":
