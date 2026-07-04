@@ -109,6 +109,7 @@
   .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
   .tag.best{background:var(--honey);color:#fff}
   .tag.oos{background:var(--line);color:var(--muted)}
+  .store.size-out{opacity:.5}
   .store .price{font-family:var(--mono);font-weight:700;font-size:18px}
   .store .go{font-family:var(--mono);font-size:13px;text-decoration:none;border:1px solid var(--petrol);color:var(--petrol);border-radius:8px;padding:7px 12px;white-space:nowrap}
   .store .go:hover{background:var(--petrol);color:#fff}
@@ -315,6 +316,19 @@ const storeName = s => STORE_NAMES[s] || (s ? s[0].toUpperCase()+s.slice(1) : "B
 const nok = n => new Intl.NumberFormat("nb-NO").format(Math.round(Number(n)));
 const cap = s => s ? s[0].toUpperCase()+s.slice(1) : "";
 const sizeNum = s => parseFloat(String(s).replace(",", ".")) || 0;
+const canonSize = x => (x==null ? "" : (""+x)).replace(",", ".").trim();
+/* offer_id (streng) -> Set av kanoniske størrelser på lager for det tilbudet */
+function sizeIndexFor(pid){
+  const idx = {};
+  (sizeCache[pid]||[]).forEach(s => {
+    if(!s.in_stock) return;
+    const k = String(s.offer_id);
+    const sz = canonSize(s.size!=null ? s.size : s.size_label);
+    if(!sz) return;
+    (idx[k] || (idx[k] = new Set())).add(sz);
+  });
+  return idx;
+}
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 async function api(qs){
@@ -328,7 +342,7 @@ async function fetchProducts(){ return api("v_prislop_products?select=*&order=br
 async function fetchOffers(pid){ return api("v_prislop_offers?product_id=eq."+pid+"&order=price.asc"); }
 async function fetchSizes(pid){ return api("v_prislop_sizes?product_id=eq."+pid); }
 async function productIdsWithSize(size){
-  const rows = await api("v_prislop_sizes?select=product_id&in_stock=is.true&size_label=eq."+encodeURIComponent(size));
+  const rows = await api("v_prislop_sizes?select=product_id&in_stock=is.true&size=eq."+encodeURIComponent(size));
   return new Set(rows.map(r => r.product_id));
 }
 
@@ -385,8 +399,8 @@ function buildFilterOptions(){
 }
 async function fetchSizeOptions(){
   try{
-    const rows = await api("v_prislop_sizes?select=size_label&in_stock=is.true");
-    const sizes = [...new Set(rows.map(r => r.size_label).filter(Boolean))].sort((a,b)=>sizeNum(a)-sizeNum(b));
+    const rows = await api("v_prislop_sizes?select=size&in_stock=is.true");
+    const sizes = [...new Set(rows.map(r => r.size).filter(Boolean))].sort((a,b)=>sizeNum(a)-sizeNum(b));
     el("f-size").insertAdjacentHTML("beforeend",
       sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(s)+'</option>').join(""));
   }catch(e){/* størrelsesfilter valgfritt */}
@@ -477,7 +491,7 @@ async function toggle(btn){
         offerCache[pid] || (offerCache[pid] = await fetchOffers(pid)),
         sizeCache[pid]  || (sizeCache[pid]  = await fetchSizes(pid)),
       ]);
-      body.innerHTML = storesHTML(offers) + sizesHTML(pid, sizes);
+      body.innerHTML = storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
     }catch(e){
       body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
         + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
@@ -486,30 +500,39 @@ async function toggle(btn){
   }
 }
 
-function storesHTML(offers){
+/* selSize (kanonisk) valgfri: re-badger tilbudene for akkurat den størrelsen.
+   Uten valgt størrelse = colorway-nivå (som før). */
+function storesHTML(offers, pid, selSize){
   if(!offers || !offers.length) return '';
+  const idx = selSize ? sizeIndexFor(pid) : null;
+  const avail = o => !selSize ? (o.in_stock!==false)
+    : !!(idx[String(o.offer_id)] && idx[String(o.offer_id)].has(selSize));
   const sorted = offers.slice().sort((a,b)=>(a.price||1e9)-(b.price||1e9));
+  const bestOffer = sorted.find(avail);                 // lavest som er på lager i valgt str
+  const bestId = bestOffer ? String(bestOffer.offer_id) : null;
   const rows = sorted.map((o,i) => {
-    const best = i===0 && o.in_stock!==false;
+    const oid = String(o.offer_id);
+    const ok = avail(o);
+    const best = bestId!=null && oid===bestId;
     const cw = o.store_color || o.colorway;
-    return '<div class="store">'
+    return '<div class="store'+(ok?'':' size-out')+'" data-offer-id="'+esc(oid)+'">'
       + '<span class="rank">'+(i+1)+'</span>'
       + '<span class="nm">'+esc(storeName(o.store))
       +    (best ? ' <span class="tag best">Lavest</span>' : '')
-      +    (o.in_stock===false ? ' <span class="tag oos">Utsolgt</span>' : '')
+      +    (!ok ? ' <span class="tag oos">Utsolgt</span>' : '')
       +    (cw ? ' <span class="cw">'+esc(cw)+'</span>' : '')
       + '</span>'
       + '<span class="price">'+nok(o.price)+' kr</span>'
       + '<a class="go" href="'+esc(o.url)+'" target="_blank" rel="sponsored nofollow noopener">Til '+esc(storeName(o.store))+' →</a>'
       + '</div>';
   }).join("");
-  return '<div class="stores">'+rows+'</div>';
+  return '<div class="stores" id="stores-'+esc(pid)+'">'+rows+'</div>';
 }
 
 function sizesHTML(pid, sizes){
   const map = new Map();
   (sizes||[]).forEach(s => {
-    const k = s.size_label; if(!k) return;
+    const k = canonSize(s.size!=null ? s.size : s.size_label); if(!k) return;
     const cur = map.get(k) || { label:k, inStock:false };
     if(s.in_stock) cur.inStock = true;
     map.set(k, cur);
@@ -539,9 +562,38 @@ function sizesHTML(pid, sizes){
 }
 
 function pickSize(btn, pid){
-  btn.closest(".grid").querySelectorAll(".chip.sel").forEach(c=>c.classList.remove("sel"));
-  btn.classList.add("sel");
-  el("st-"+pid).innerHTML = 'Følger størrelse <b>'+esc(btn.dataset.size)+'</b> — vi sier fra ved prisfall eller når den er tilbake.';
+  const grid = btn.closest(".grid");
+  const already = btn.classList.contains("sel");
+  grid.querySelectorAll(".chip.sel").forEach(c=>c.classList.remove("sel"));
+  const size = already ? null : canonSize(btn.dataset.size);   // klikk på valgt = nullstill
+  if(!already) btn.classList.add("sel");
+  // re-render butikklista for valgt størrelse (utsolgt-for-str + ny Lavest)
+  const cont = el("stores-"+pid);
+  if(cont) cont.outerHTML = storesHTML(offerCache[pid]||[], pid, size);
+  updateLowest(btn.closest(".product"), pid, size, btn.dataset.size);
+}
+
+/* «Lavest nå» i kort-hodet regnes om til valgt størrelse (blant butikker som
+   faktisk har den på lager), så badgen aldri peker på en utsolgt butikk. */
+function updateLowest(card, pid, size, rawLabel){
+  const offers = offerCache[pid] || [];
+  let lowest = null;
+  if(size){
+    const idx = sizeIndexFor(pid);
+    offers.forEach(o => { if(idx[String(o.offer_id)] && idx[String(o.offer_id)].has(size)){
+      const p=o.price; if(p!=null && (lowest==null||p<lowest)) lowest=p; } });
+  }else{
+    offers.forEach(o => { if(o.in_stock!==false){ const p=o.price; if(p!=null && (lowest==null||p<lowest)) lowest=p; } });
+  }
+  if(card){
+    const val = card.querySelector(".from .val"), lbl = card.querySelector(".from .lbl");
+    if(val) val.innerHTML = (lowest!=null ? nok(lowest) : "–") + '&nbsp;<span>kr</span>';
+    if(lbl) lbl.textContent = size ? ("Lavest i str "+(rawLabel||size)) : "Lavest nå";
+  }
+  const st = el("st-"+pid);
+  if(st) st.innerHTML = size
+    ? 'Følger størrelse <b>'+esc(rawLabel||size)+'</b> — vi sier fra ved prisfall eller når den er tilbake.'
+    : 'Velg en størrelse, så følger vi prisen for akkurat den.';
 }
 function openAlert(pid){ el("af-"+pid).classList.add("show"); el("af-"+pid).querySelector(".email").focus(); }
 
