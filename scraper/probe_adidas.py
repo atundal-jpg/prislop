@@ -22,6 +22,20 @@ import json
 import re
 import sys
 import traceback
+import types
+
+# probe.yml installerer ikke psycopg2 (stdlib-only av design). discovery ->
+# loader -> psycopg2 er en import-kjede, men loader bruker driveren kun inne i
+# get_conn() (aldri på import-tid, og aldri i denne proben). Stub modulnavnet
+# FØR discovery-importen så kjeden går gjennom uten DB-driver.
+if "psycopg2" not in sys.modules:
+    _pg = types.ModuleType("psycopg2")
+    _pg.extras = types.ModuleType("psycopg2.extras")
+    def _no_db(*a, **k):
+        raise RuntimeError("psycopg2 er stubbet i proben — ingen DB-tilgang her.")
+    _pg.connect = _no_db
+    sys.modules["psycopg2"] = _pg
+    sys.modules["psycopg2.extras"] = _pg.extras
 
 # --- Fetcher: bruk pipelinens, med urllib-fallback om requests mangler ------
 try:
