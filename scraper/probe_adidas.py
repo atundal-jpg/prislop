@@ -1,150 +1,167 @@
 #!/usr/bin/env python3
 """
-probe_adidas.py — sjekk Adidas-inngangen i alle butikkene før multi-merke-wiring.
+probe_adidas.py (v2) — test Adidas gjennom PIPELINENS EGNE adaptere.
 
-For hver butikk: prøv Adidas-analogen til Asics-inngangen (som regel sti-swap
-asics->adidas), rapporter om den gir Adidas-løpesko, og bekreft at PDP-en
-gjenbruker samme struktur som Asics (så parseren generaliserer ved bare å lese
-merke dynamisk). Dyp-sjekk på Foss + Brukås (de vi kjenner best); lettere
-statussjekk på SportHolding/Torshov/XXL.
+v1 (generiske regexer) avklarte: Foss fører ikke Adidas (sitemap: 0), Brukås
+sannsynligvis ikke (0 slugs, samme uttrekk som i drift). For SportHolding/
+Torshov/XXL var v1-målingen ubrukelig (markør-regexen matcher ikke deres markup
+engang for Asics). v2 gjør det avgjørende: monkey-patcher butikk-konfigene til
+Adidas-innganger og kjører EKTE discovery.discover() + EKTE adapter per butikk.
 
-Nøkkelspørsmål: (1) hvilke Adidas-URL-er funker, (2) samme PDP-mal? (3) XXLs
-Adidas-kategori (Asics = /lopesko-herre/Asics/c/140202?f.brand=Asics).
-Stdlib only. probe.yml (script=probe_adidas.py).
+Svarer på:
+  1) Gir Adidas-listingene produkt-URL-er via de ekte adapterne?
+  2) Parser den ekte parseren en Adidas-PDP riktig (brand? modell? sizes? EAN)?
+     (Avslører også hvor 'Asics' er hardkodet i parserne -> generaliserings-liste.)
+  3) XXL: hva er riktig Adidas-kategorikode? (leter i brand-facet-lenkene)
+
+Kjøres via probe.yml (script=probe_adidas.py, working-directory: scraper).
+Trenger repo-modulene; requests-fallback hvis den mangler.
 """
 from __future__ import annotations
 import json
 import re
-import urllib.request
-import urllib.error
+import sys
+import traceback
 
-UA = "Mozilla/5.0 (prislop-probe)"
-LD = re.compile(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
-LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
-TITLE_A = re.compile(r'class="product-title"[^>]*>\s*<a[^>]*href="([^"#?]+)"', re.I)
-GRID_SPAN = re.compile(r'<span[^>]*class="[^"]*button-dropdown[^"]*"', re.I)
+# --- Fetcher: bruk pipelinens, med urllib-fallback om requests mangler ------
+try:
+    from fetch import Fetcher
+except Exception:
+    import urllib.request
 
+    class Fetcher:                                   # minimal shim, samme .get()
+        def __init__(self, *a, **k):
+            pass
 
-def get(url, cap=None):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "nb-NO"})
-    try:
-        with urllib.request.urlopen(req, timeout=45) as r:
-            data = r.read(cap) if cap else r.read()
-            return r.status, data.decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        return e.code, ""
-    except Exception as e:
-        return None, "FEIL %s" % e
-
-
-def head(txt, label):
-    print("  %-14s %s" % (label, txt))
-
-
-def foss():
-    print("\n=== FOSS (sitemap /adidas/<id>/) ===")
-    st, xml = get("https://www.foss-sport.no/sitemap.xml", cap=5_000_000)
-    locs = LOC.findall(xml)
-    if any(l.lower().endswith(".xml") for l in locs):
-        # indeks: følg noen barn
-        subs = [l for l in locs if l.lower().endswith(".xml")][:12]
-        locs = []
-        for s in subs:
-            locs += LOC.findall(get(s, cap=5_000_000)[1])
-    ad = sorted(set(l for l in locs if re.search(r"/adidas/\d+/", l, re.I)))
-    head("HTTP %s, %d Adidas-produkt-URL-er i sitemap" % (st, len(ad)), "sitemap:")
-    for u in ad[:4]:
-        print("      ", u)
-    # dyp-sjekk: én Adidas-PDP -> ProductGroup + brand + hasVariant + gtin13
-    if ad:
-        p = ad[0]
-        if p.startswith("http") and "www." not in p:
-            p = p.replace("http://foss-sport.no", "https://www.foss-sport.no")
-        st2, html = get(p)
-        grp = None
-        for blk in LD.findall(html):
+        def get(self, url):
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (prislop-probe)",
+                "Accept-Language": "nb-NO"})
             try:
-                d = json.loads(blk)
-            except Exception:
-                continue
-            for it in (d if isinstance(d, list) else [d]):
-                if isinstance(it, dict) and it.get("@type") == "ProductGroup":
-                    grp = it
-        if grp:
-            hv = grp.get("hasVariant") or []
-            brand = (grp.get("brand") or {}).get("name") if isinstance(grp.get("brand"), dict) else grp.get("brand")
-            head("name=%r brand=%r hasVariant=%d gtin13[0]=%s"
-                 % (grp.get("name"), brand, len(hv),
-                    (hv[0].get("gtin13") if hv and isinstance(hv[0], dict) else None)), "PDP:")
-            print("      => Foss: SAMME mal (ProductGroup.hasVariant). Parser trenger bare lese brand.")
+                with urllib.request.urlopen(req, timeout=40) as r:
+                    return r.read().decode("utf-8", "replace")
+            except Exception as e:
+                print("    fetch-feil %s: %s" % (url, e))
+                return None
+
+import discovery   # ekte discovery + adaptere
+
+ADIDAS_MODELS = ["Adizero SL 2", "Adizero Boston 13", "Adizero Adios Pro 4",
+                 "Ultraboost 5", "Supernova Rise 2", "Adizero Evo SL"]
+
+
+def show_record(rec, limit_sizes=4):
+    keys = ("brand", "model", "gender", "color", "manufacturer_code", "price")
+    print("      rec:", {k: rec.get(k) for k in keys})
+    sizes = rec.get("sizes") or []
+    print("      sizes: %d stk, første: %s" % (
+        len(sizes), [(s.get("size_label"), s.get("ean"), s.get("in_stock")) for s in sizes[:limit_sizes]]))
+
+
+def run_store(slug, patch: dict, note=""):
+    print("\n" + "=" * 74)
+    print("BUTIKK: %s  %s" % (slug, note))
+    cfg = discovery.STORES.get(slug)
+    if not cfg:
+        print("  (ikke i STORES — hopper over)")
+        return
+    # patch konfig til Adidas-inngang
+    saved = {}
+    for k, v in patch.items():
+        saved[k] = cfg.get(k)
+        cfg[k] = v
+    # tøm evt. liste-cache så patchen slår inn
+    for cache_name in ("_LIST_CACHE",):
+        c = getattr(discovery, cache_name, None)
+        if isinstance(c, dict):
+            c.pop(slug, None)
+
+    fetcher = Fetcher()
+    urls, seen = [], set()
+    for model in ADIDAS_MODELS:
+        try:
+            found = discovery.discover(fetcher, slug, "Adidas", model, limit=4)
+        except Exception as e:
+            print("  discover(%r) FEIL: %s" % (model, e))
+            continue
+        n_new = 0
+        for u in found:
+            if u not in seen:
+                seen.add(u)
+                urls.append(u)
+                n_new += 1
+        print("  discover(%r): %d URL-er (%d nye)" % (model, len(found), n_new))
+    print("  TOTALT unike produkt-URL-er: %d" % len(urls))
+    for u in urls[:5]:
+        print("    ", u)
+
+    # parse én PDP med den EKTE adapteren
+    if urls:
+        u = urls[0]
+        html = fetcher.get(u)
+        if html:
+            try:
+                recs = cfg["adapter"](html, u)
+                agg = cfg.get("aggregate")
+                if agg and recs:
+                    recs = agg(recs)
+                print("  adapter -> %d record(s)" % len(recs))
+                for r in recs[:1]:
+                    show_record(r)
+            except Exception as e:
+                print("  adapter FEIL:", e)
+                traceback.print_exc(limit=2)
+    # restore
+    for k, v in saved.items():
+        if v is None:
+            cfg.pop(k, None)
         else:
-            head("PDP uten ProductGroup — sjekk manuelt: %s" % p, "PDP:")
+            cfg[k] = v
 
 
-def brukas():
-    print("\n=== BRUKÅS (kategorier, /adidas-…-slugs) ===")
-    base = "https://www.brukas.no"
-    found = []
-    for cat in ["/joggesko-herre", "/joggesko-dame", "/terrengsko-herre"]:
-        st, html = get(base + cat)
-        ad = [h for h in TITLE_A.findall(html) if re.search(r"/adidas-", h, re.I)]
-        found += ad
-        head("HTTP %s | %d adidas-produkt-lenker" % (st, len(set(ad))), cat + ":")
-    found = sorted(set(found))
-    if found:
-        p = found[0] if found[0].startswith("http") else base + found[0]
-        st2, html = get(p)
-        grid = bool(GRID_SPAN.search(html))
-        has_ld = "ProductGroup" in html or '"@type":"Product"' in html
-        head("%s | button-dropdown-grid=%s | json-ld=%s" % (p, grid, has_ld), "PDP:")
-        print("      => Brukås: %s" % ("SAMME størrelses-grid som Asics -> gjenbruk brukas_parser." if grid
-                                        else "IKKE grid — Adidas kan ha annen struktur, sjekk PDP."))
-
-
-def simple(label, url, needle_re=r"adidas"):
-    st, html = get(url)
-    hits = len(re.findall(needle_re, html, re.I)) if html else 0
-    # grovt produkt-antall-hint
-    prod = len(re.findall(r'data-productid=|"productId"|product-item|product-title|/product/', html, re.I)) if html else 0
-    head("HTTP %s, %d B | 'adidas'x%d | produkt-markører~%d" % (st, len(html), hits, prod), label)
-    return st, html
-
-
-def sportholding():
-    print("\n=== SPORTHOLDING (Intersport/Sport 1/Löplabbet: /asics -> /adidas) ===")
-    for name, url in [("intersport", "https://www.intersport.no/adidas"),
-                      ("sport1", "https://www.sport1.no/adidas"),
-                      ("loplabbet", "https://www.loplabbet.no/adidas")]:
-        simple(name + ":", url)
-
-
-def torshov():
-    print("\n=== TORSHOV (adidas-lopesko) ===")
-    simple("torshov:", "https://www.torshovsport.no/lop/lopesko/vare-merker/adidas-lopesko")
-
-
-def xxl():
-    print("\n=== XXL (Asics: /lopesko-herre/Asics/c/140202?f.brand=Asics) ===")
-    # test: samme kategori-kode, bytt merke-segment + facet
-    for tag, url in [
-        ("herre-swap", "https://www.xxl.no/herre/sko/lopesko-herre/Adidas/c/140202?f.brand=Adidas"),
-        ("uten-facet", "https://www.xxl.no/herre/sko/lopesko-herre/c/140202?f.brand=Adidas"),
-    ]:
-        simple(tag + ":", url)
-    print("      (XXL kan blokkere datasenter-IP / kreve API — se HTTP-status.)")
+def xxl_find_adidas_code():
+    print("\n" + "=" * 74)
+    print("XXL: finn Adidas-kategorikode (brand-facet-lenker)")
+    f = Fetcher()
+    for base in ["https://www.xxl.no/herre/sko/lopesko-herre/c/140202",
+                 "https://www.xxl.no/dame/sko/lopesko-dame/c/140203"]:
+        html = f.get(base) or ""
+        print("  %s -> %d B" % (base, len(html)))
+        # facet-lenker: /<sti>/Adidas/c/<kode> eller f.brand=adidas
+        cands = sorted(set(re.findall(r'"(/[^"]*[Aa]didas[^"]*/c/\d+[^"]*)"', html)))
+        for c in cands[:6]:
+            print("     facet-URL:", c)
+        codes = sorted(set(re.findall(r'[Aa]didas/c/(\d+)', html)))
+        print("     kode-kandidater:", codes or "INGEN — sjekk f.brand-param i stedet")
+        m = re.findall(r'"(f\.brand=[^"&]*[Aa]didas[^"&]*)"', html)
+        if m:
+            print("     f.brand-varianter:", sorted(set(m))[:4])
 
 
 def main():
-    print("probe_adidas — Adidas-inngang per butikk\n" + "=" * 70)
-    for fn in (foss, brukas, sportholding, torshov, xxl):
-        try:
-            fn()
-        except Exception as e:
-            print("  FEIL i %s: %s" % (fn.__name__, e))
-    print("\n" + "=" * 70)
-    print("KONKLUSJON: butikker der Adidas-URL gir produkter + samme PDP-mal =")
-    print("  ren swap i discovery-config. Avvik (XXL-kode, annen PDP) håndteres eksplisitt.")
-    print("  Bull ikke testet her (egen AJAX/ES-discovery) — egen recon ved behov.")
+    print("probe_adidas v2 — gjennom pipelinens egne adaptere")
+
+    # Torshov: swap kategorien + link_re til adidas-lopesko
+    run_store("torshov", {
+        "search_url": (lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/adidas-lopesko"),
+        "link_re": re.compile(r"/lop/lopesko/vare-merker/adidas-lopesko/[a-z0-9-]+", re.I),
+    }, note="(adidas-lopesko)")
+
+    # SportHolding-trioen: swap listing /asics -> /adidas
+    for slug, url in [("intersport", "https://www.intersport.no/adidas"),
+                      ("sport1", "https://www.sport1.no/adidas"),
+                      ("loplabbet", "https://www.loplabbet.no/adidas")]:
+        run_store(slug, {"listing_urls": [url]}, note="(/adidas)")
+
+    # XXL: finn riktig kode først; kjør så discover med beste gjetning hvis funnet
+    xxl_find_adidas_code()
+
+    print("\n" + "=" * 74)
+    print("KONKLUSJON-HINT:")
+    print("  * discover>0 + adapter gir fornuftig record (riktig modell/sizes) =")
+    print("    butikken er en ren konfig-swap; sjekk om 'brand' i rec er hardkodet 'Asics'.")
+    print("  * XXL: bruk funnet Adidas-kode i search_url og kjør v3/discover manuelt.")
+    print("  * Foss/Brukås utelatt: fører ikke Adidas (v1).")
 
 
 if __name__ == "__main__":
