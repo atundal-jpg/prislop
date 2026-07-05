@@ -33,13 +33,15 @@ LD_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S)
 VIDEOLY_ID_RE = re.compile(r'videoly-product-id"[^>]*>\s*asics-([0-9a-z]+)-(.+?)-(\d+)_', re.I)
 VIDEOLY_ADIDAS_RE = re.compile(r'videoly-product-id"[^>]*>\s*adidas-([a-z]{2}\d{4,5})-(.+?)_', re.I)
 
-# Trailing Asics-stilkode i slug (4 siffer + bokstav + 3 siffer), f.eks. -1011c127.
-# Asics-stilkode ELLER Adidas-artikkelkode på slutten av slug.
-SLUG_CODE_RE = re.compile(r"-(\d{4}[a-z]\d{3}|[a-z]{2}\d{4,5})(?:/|\?|$)", re.I)
+# Trailing artikkelkode på slutten av slug, per merke:
+#   Asics \d{4}[a-z]\d{3} · Adidas/Nike [a-z]{2}\d{4,5} · Saucony \d{5} ·
+#   Puma \d{6} · Hoka \d{7} (rene sifferkoder dekkes av \d{5,7}).
+SLUG_CODE_RE = re.compile(r"-(\d{4}[a-z]\d{3}|[a-z]{2}\d{4,5}|\d{5,7})(?:/|\?|$)", re.I)
 
 # Ord som ikke er farge når vi utleder farge fra slug.
 _DROP_TOKENS = {
-    "asics", "adidas", "herre", "dame", "unisex", "barn", "junior",
+    "asics", "adidas", "nike", "hoka", "saucony", "puma", "kiprun",
+    "herre", "dame", "unisex", "barn", "junior",
     "lopesko", "løpesko", "sko", "joggesko", "terreng",
 }
 
