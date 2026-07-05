@@ -316,6 +316,11 @@ const storeName = s => STORE_NAMES[s] || (s ? s[0].toUpperCase()+s.slice(1) : "B
 const nok = n => new Intl.NumberFormat("nb-NO").format(Math.round(Number(n)));
 const cap = s => s ? s[0].toUpperCase()+s.slice(1) : "";
 const sizeNum = s => parseFloat(String(s).replace(",", ".")) || 0;
+/* Labels < 30 er UK-skala (butikker uten EU-motstykke i EAN-broen).
+   Vises ærlig som «UK 8» og sorteres etter EU-størrelsene. */
+const isUKSize = s => { const n = sizeNum(s); return n > 0 && n < 30; };
+const sizeDisp = s => isUKSize(s) ? "UK " + s : s;
+const sizeSort = s => sizeNum(s) + (isUKSize(s) ? 1000 : 0);
 const canonSize = x => (x==null ? "" : (""+x)).replace(",", ".").trim();
 /* offer_id (streng) -> Set av kanoniske størrelser på lager for det tilbudet */
 function sizeIndexFor(pid){
@@ -400,9 +405,9 @@ function buildFilterOptions(){
 async function fetchSizeOptions(){
   try{
     const rows = await api("v_prislop_sizes?select=size&in_stock=is.true");
-    const sizes = [...new Set(rows.map(r => r.size).filter(Boolean))].sort((a,b)=>sizeNum(a)-sizeNum(b));
+    const sizes = [...new Set(rows.map(r => r.size).filter(Boolean))].sort((a,b)=>sizeSort(a)-sizeSort(b));
     el("f-size").insertAdjacentHTML("beforeend",
-      sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(s)+'</option>').join(""));
+      sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(sizeDisp(s))+'</option>').join(""));
   }catch(e){/* størrelsesfilter valgfritt */}
 }
 
@@ -537,11 +542,11 @@ function sizesHTML(pid, sizes){
     if(s.in_stock) cur.inStock = true;
     map.set(k, cur);
   });
-  const items = [...map.values()].sort((a,b)=>sizeNum(a.label)-sizeNum(b.label));
+  const items = [...map.values()].sort((a,b)=>sizeSort(a.label)-sizeSort(b.label));
   const grid = items.length ? items.map(it =>
       '<button class="chip '+(it.inStock?'avail':'out')+'"'
       + (it.inStock?' onclick="pickSize(this,\''+pid+'\')" data-size="'+esc(it.label)+'"':' disabled')
-      + '><span class="n">'+esc(it.label)+'</span><span class="s">'+(it.inStock?'på lager':'utsolgt')+'</span></button>'
+      + '><span class="n">'+esc(sizeDisp(it.label))+'</span><span class="s">'+(it.inStock?'på lager':'utsolgt')+'</span></button>'
     ).join("") : '<span class="hint">Ingen størrelsesdata ennå.</span>';
 
   return '<div class="sizes">'
