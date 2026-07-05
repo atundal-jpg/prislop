@@ -356,7 +356,7 @@ STORES = {
 }
 
 # Barn/junior-slugger vi ikke vil ha med fra de umerkede merke-listene.
-_KIDS_RE = re.compile(r"-(barn|junior|jr|gs|ps|td)-", re.I)
+_KIDS_RE = re.compile(r"-(barn|junior|jr|gs|ps|td|baby|infant|kids)-", re.I)  # baby: Sport 1 «runfalcon-5-el-i-…-baby-…» lekket 5. juli
 
 HREF_RE = re.compile(r'href="([^"#]+)"', re.I)
 
