@@ -384,12 +384,12 @@ async function buildHeroStats(){
   }catch(e){ stores = 0; }
   el("herostats").innerHTML =
       '<span class="pill"><b>'+PRODUCTS.length+'</b> løpesko-modeller</span>'
-    + '<span class="pill">Butikker tilkoblet: <b>'+(stores||"–")+'</b> / 7</span>'
+    + '<span class="pill">Butikker tilkoblet: <b>'+(stores||"–")+'</b></span>'
     + '<span class="pill">Størrelsesnivå lager <b>✓</b></span>';
 }
 
 function buildFilterOptions(){
-  const brands = [...new Set(PRODUCTS.map(p => p.brand).filter(Boolean))].sort();
+  const brands = [...new Set(PRODUCTS.map(p => p.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'nb',{sensitivity:'base'}));
   el("f-brand").insertAdjacentHTML("beforeend",
     brands.map(b => '<option value="'+esc(b)+'">'+esc(b)+'</option>').join(""));
   const genders = [...new Set(PRODUCTS.map(p => p.gender).filter(Boolean))].sort();
