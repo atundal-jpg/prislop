@@ -27,9 +27,11 @@ import re, json
 
 LD_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S)
 
-# Asics-spesifikk i dag (vi er Asics-only). Generaliser merke-prefikset her ved
-# flermerke-steget i veikartet. Grupper: (stamme/stilkode, fargeslug, fargenr).
+# Per merke: Asics-id = "asics-<stamme>-<fargeslug>-<fargenr>_",
+# Adidas-id = "adidas-<artikkelkode>-<fargeslug>_", f.eks. adidas-hq1345-vicblu-ftwwht-lucblu-ae64_.
+# Grupper (Asics): (stamme/stilkode, fargeslug, fargenr).
 VIDEOLY_ID_RE = re.compile(r'videoly-product-id"[^>]*>\s*asics-([0-9a-z]+)-(.+?)-(\d+)_', re.I)
+VIDEOLY_ADIDAS_RE = re.compile(r'videoly-product-id"[^>]*>\s*adidas-([a-z]{2}\d{4,5})-(.+?)_', re.I)
 
 # Trailing Asics-stilkode i slug (4 siffer + bokstav + 3 siffer), f.eks. -1011c127.
 SLUG_CODE_RE = re.compile(r"-(\d{4}[a-z]\d{3})(?:/|\?|$)", re.I)
@@ -123,10 +125,16 @@ def parse(html: str, url: str = "", store_slug: str = "intersport",
     #    Mangler den (Löplabbet): kode=None (EAN-vei i loaderen), farge fra slug.
     manufacturer_code, color = None, None
     m = VIDEOLY_ID_RE.search(html)
+    ma = VIDEOLY_ADIDAS_RE.search(html) if not m else None
     if m:
         stem, colorslug, num = m.group(1), m.group(2), m.group(3)
         manufacturer_code = f"{stem.upper()}-{num}"
         color = "/".join(w.capitalize() for w in colorslug.split("-"))
+    elif ma:
+        # Adidas-artikkelkoden ER colorway-spesifikk -> hele koden som manufacturer_code.
+        manufacturer_code = ma.group(1).upper()
+        toks = [t for t in ma.group(2).split("-") if not re.fullmatch(r"[a-z]{2}\d{2,}", t)]
+        color = "/".join(t.upper() for t in toks) or None
     else:
         color = _color_from_slug(ld_url or url, model)
 
