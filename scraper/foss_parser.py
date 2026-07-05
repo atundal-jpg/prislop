@@ -30,11 +30,13 @@ COLOR_RE = re.compile(r"-\s*([A-Z0-9]{1,4}(?:/[A-Z0-9]{1,4})?)\s*$")
 SHOE_RE = re.compile(r"(løpe|terreng|jogge|konkurranse|trail)sko", re.I)
 KIDS_RE = re.compile(r"\b(PS|GS|TS|TD)\b")
 SIZE_TAIL_RE = re.compile(r"\s+\d{1,2}(?:[.,]\d)?H?\s*$")
-GENDER_RE = re.compile(r"^(Herre|Dame|Unisex|Barn|Junior)\b\s*", re.I)
+# Kjønn: ord ELLER ledende bokstav (Saucony/Kiprun-navnene bruker M/W/U).
+GENDER_RE = re.compile(r"^(Herre|Dame|Unisex|Barn|Junior|M|W|U)\b\s*", re.I)
 CAT_RE = re.compile(r"^(Løpesko|Terrengsko|Joggesko|Konkurransesko|Trailsko|Sko)\b\s*", re.I)
 
 _GENDER = {"herre": "herre", "dame": "dame", "unisex": "unisex",
-           "barn": "barn", "junior": "barn"}
+           "barn": "barn", "junior": "barn",
+           "m": "herre", "w": "dame", "u": "unisex"}
 
 # URL-fallback for merke: https://www.foss-sport.no/<merke>/<id>/…
 _URL_BRAND_RE = re.compile(r"foss-sport\.no/([a-z0-9-]+)/\d+/", re.I)
@@ -94,15 +96,23 @@ def parse(html: str, url: str) -> list[dict]:
     if not brand:
         return []                      # uten merke kan vi ikke plassere produktet
 
-    # navn: «<Merke> <Kjønn> <Kategori> <Modell> <Størrelse>»
+    # Navnestrukturen varierer per merke (begge verifisert i drift 5. juli):
+    #   Asics:          «<Merke> <Kjønn> <Kategori> <Modell> <Størrelse>»
+    #   Saucony/Kiprun: «<Merke> <Kategori> <Kjønn|M|W|U> <Modell> <Størrelse>»
+    # -> strip kjønn/kategori i VILKÅRLIG rekkefølge til ingen av dem matcher.
     s = re.sub(r"^\s*%s\s+" % re.escape(brand), "", name, flags=re.I)
-    gm = GENDER_RE.match(s)
-    gender = _GENDER.get((gm.group(1).lower() if gm else ""), "unisex")
-    if gm:
-        s = s[gm.end():]
-    cm = CAT_RE.match(s)
-    if cm:
-        s = s[cm.end():]
+    gender = "unisex"
+    for _ in range(3):
+        gm = GENDER_RE.match(s)
+        if gm:
+            gender = _GENDER.get(gm.group(1).lower(), "unisex")
+            s = s[gm.end():]
+            continue
+        cm = CAT_RE.match(s)
+        if cm:
+            s = s[cm.end():]
+            continue
+        break
     model = SIZE_TAIL_RE.sub("", s).strip()
     if not model:
         return []
