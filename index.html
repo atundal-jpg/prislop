@@ -247,6 +247,7 @@
       <select class="sel" id="f-gender" aria-label="Filtrer på kjønn"><option value="">Alle kjønn</option></select>
       <select class="sel" id="f-size" aria-label="Filtrer på størrelse"><option value="">Alle størrelser</option></select>
       <select class="sel" id="f-sort" aria-label="Sortering">
+        <option value="rank">Anbefalt</option>
         <option value="price">Laveste pris</option>
         <option value="stores">Flest butikker</option>
         <option value="name">Modell A–Å</option>
@@ -354,7 +355,7 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {};
-const filters = { q:"", brand:"", gender:"", size:"", sort:"price" };
+const filters = { q:"", brand:"", gender:"", size:"", sort:"rank" };
 
 const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
   + '<path d="M5 41c0-3 2-5 6-6 6-1 9-4 13-9 3-4 6-6 9-5 2 1 2 3 1 6 4-1 9 0 15 3 6 3 9 6 9 10 0 3-2 4-6 4H9c-3 0-4-1-4-3z" fill="#136E68"/>'
@@ -440,7 +441,8 @@ function currentList(){
   }
   const s = filters.sort;
   list.sort((a,b) =>
-    s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || (a.from_price||0)-(b.from_price||0)
+    s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || (a.from_price||0)-(b.from_price||0)
+    : s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || (a.from_price||0)-(b.from_price||0)
     : s==="name" ? String(a.model).localeCompare(String(b.model),"nb")
     : (a.from_price||0)-(b.from_price||0));
   return list;
