@@ -106,9 +106,16 @@ STORES = {
                 "brand_filter": "Nike",
                 "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/nike/c/140202?f.brand=Nike",
             },
-            # XXL fører også Hoka/Saucony/Puma, men eSales-facet-navnene er
-            # ukjente (probe med .capitalize() ga 0). Kjør probe_xxl_facets.py
-            # for å finne dem, og legg dem inn her når de er verifisert.
+            "puma": {     # facet «Puma» verifisert i probe_xxl_facets 5. juli
+                # (12 treff i /c/142010, mest barn/sneakers — kjønnsfilteret
+                # tar barna, så voksen-utbyttet blir lite men gratis).
+                "brand_filter": "Puma",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/puma/c/140202?f.brand=Puma",
+            },
+            # Hoka/Saucony: probe_xxl_facets 5. juli ga 0 treff på ALLE
+            # navnevarianter (Hoka/HOKA/hoka/Hoka One One… og Saucony/SAUCONY/
+            # saucony) mot /c/142010 — XXL fører dem ikke i Løpesko-kategorien.
+            # Ikke et facet-navn-problem; re-prob ved sortiments-endring.
         },
         # Apptus eSales: henter ALLE produkt-URL-er (paginert), ikke bare side 1.
         "mode": "esales_api",
@@ -208,11 +215,12 @@ STORES = {
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
             # probe_brands 5. juli: saucony ~43 · nike ~65. Kodeformater fra
-            # slug-haler: Saucony 5 siffer (11023), Nike [a-z]{2}\d{4} (hj8485,
-            # samme mønster som Adidas).
+            # slug-haler: Saucony har TO formater — bare 5 siffer (11023) OG
+            # stilkode+farge (s20964-200, funnet 5. juli; forklarte 31-vs-53-
+            # gapet på Löplabbet). Nike [a-z]{2}\d{4} (hj8485, som Adidas).
             "saucony": {
                 "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=SAUCONY"],
-                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+                "marker_re": re.compile(r"/[a-z0-9-]+-(?:s\d{5}-\d{1,3}|s?\d{5})/?($|\?)", re.I),
             },
             "nike": {
                 "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=NIKE"],
@@ -242,7 +250,7 @@ STORES = {
             # (Sport 1 hadde kun 1 Nike-produkt). Hoka-kode = 7 siffer (1162031).
             "saucony": {
                 "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=SAUCONY"],
-                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+                "marker_re": re.compile(r"/[a-z0-9-]+-(?:s\d{5}-\d{1,3}|s?\d{5})/?($|\?)", re.I),
             },
             "hoka": {
                 "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=HOKA"],
@@ -269,7 +277,7 @@ STORES = {
             # Puma \d{6} (312060).
             "saucony": {
                 "listing_urls": ["https://loplabbet.no/lopesko?Brand=SAUCONY"],
-                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+                "marker_re": re.compile(r"/[a-z0-9-]+-(?:s\d{5}-\d{1,3}|s?\d{5})/?($|\?)", re.I),
             },
             "nike": {
                 "listing_urls": ["https://loplabbet.no/lopesko?Brand=NIKE"],
