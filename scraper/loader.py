@@ -174,10 +174,17 @@ def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
     return cur.fetchone()[0]
 
 
-def upsert_offer(cur, store_id: int, variant_id: str, rec: dict) -> str:
-    """Upserter tilbudet og fører prishistorikk KUN når prisen er ny/endret."""
+def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, run_ts=None) -> tuple[str, bool]:
+    """Upserter tilbudet og fører prishistorikk KUN når prisen er ny/endret.
+    Returnerer (offer_id, accepted). accepted=False når samme (butikk, variant)
+    alt er sett i DENNE kjøringen med lavere/lik pris — da hopper vi over
+    recorden. Skjer når én butikk har TO artikkelnumre for samme fysiske
+    colorway (XXL: gammel artikkel på klarering + ny sesongartikkel, samme
+    EAN-er, funnet 5. juli: 57 tilbud flip-floppet 289/729 i prishistorikken).
+    Vi beholder deterministisk det BILLIGSTE av duplikatene."""
     cur.execute(
-        "select id, current_price from prislop.offers where store_id = %s and variant_id = %s",
+        "select id, current_price, last_seen_at from prislop.offers "
+        "where store_id = %s and variant_id = %s",
         (store_id, variant_id),
     )
     existing = cur.fetchone()
@@ -186,7 +193,11 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict) -> str:
     any_stock = any(s.get("in_stock") for s in rec.get("sizes", []))
 
     if existing:
-        offer_id, old_price = existing
+        offer_id, old_price, last_seen = existing
+        if (run_ts is not None and last_seen is not None and last_seen >= run_ts
+                and price is not None and old_price is not None
+                and float(price) >= float(old_price)):
+            return offer_id, False           # dyrere duplikat i samme kjøring
         cur.execute(
             """
             update prislop.offers
@@ -217,7 +228,7 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict) -> str:
             "insert into prislop.price_history (offer_id, price, currency) values (%s, %s, %s)",
             (offer_id, price, currency),
         )
-    return offer_id
+    return offer_id, True
 
 
 def upsert_sizes(cur, offer_id: str, sizes: list[dict]) -> int:
@@ -302,7 +313,9 @@ def load(offers: list[dict]) -> dict:
                         store_ids[slug] = upsert_store(cur, rec["store"])
                     product_id = upsert_product(cur, rec)
                     variant_id = get_or_create_variant(cur, product_id, rec)
-                    offer_id = upsert_offer(cur, store_ids[slug], variant_id, rec)
+                    offer_id, accepted = upsert_offer(cur, store_ids[slug], variant_id, rec, run_ts)
+                    if not accepted:
+                        continue             # dyrere duplikat-artikkel i samme kjøring
                     stats["sizes"] += upsert_sizes(cur, offer_id, rec.get("sizes", []))
                     stats["offers"] += 1
                 # Etter at alt er upsertet: flagg det vi IKKE så denne kjøringen
