@@ -9,7 +9,11 @@ av variant-velgeren. Returnerer ÉN OfferRecord per colorway (ingen aggregate).
 Bro: per-størrelse-EAN (mot XXL/Löplabbet/Brukås) + Asics-stilkode fra bildet
 (mot Bull/Intersport). Størrelse beholdes som rå komma («37,5») for å matche XXL.
 
-Filtre: kun løpe-/terrengsko (sitemap-en under /asics/ inneholder også klær,
+Merke-agnostisk (5. juli): brand leses fra JSON-LD `brand.name`, med URL-
+segmentet (/<merke>/<id>/…) som fallback. CODE_RE er Asics-formatet og beholdes
+som forsøk — andre merker får `manufacturer_code=None`, og EAN bærer broen.
+
+Filtre: kun løpe-/terrengsko (sitemap-en under /<merke>/ inneholder også klær,
 sokker, tights osv.), og ingen barn (PS/GS/TS/TD eller Barn/Junior).
 """
 
@@ -32,9 +36,29 @@ CAT_RE = re.compile(r"^(Løpesko|Terrengsko|Joggesko|Konkurransesko|Trailsko|Sko
 _GENDER = {"herre": "herre", "dame": "dame", "unisex": "unisex",
            "barn": "barn", "junior": "barn"}
 
+# URL-fallback for merke: https://www.foss-sport.no/<merke>/<id>/…
+_URL_BRAND_RE = re.compile(r"foss-sport\.no/([a-z0-9-]+)/\d+/", re.I)
+
 
 def _txt(s) -> str:
     return _html.unescape(str(s or "")).strip()
+
+
+def _brand(grp: dict, url: str) -> str | None:
+    """Merke fra JSON-LD brand.name (verifisert struktur juni), ellers fra
+    URL-segmentet. Returnerer None hvis begge mangler (da skippes siden)."""
+    b = grp.get("brand")
+    name = None
+    if isinstance(b, dict):
+        name = _txt(b.get("name"))
+    elif isinstance(b, list) and b and isinstance(b[0], dict):
+        name = _txt(b[0].get("name"))
+    elif isinstance(b, str):
+        name = _txt(b)
+    if name:
+        return name
+    m = _URL_BRAND_RE.search(url or "")
+    return m.group(1).replace("-", " ").title() if m else None
 
 
 def _in_stock(offers) -> bool:
@@ -66,8 +90,12 @@ def parse(html: str, url: str) -> list[dict]:
     if not SHOE_RE.search(name):
         return []                      # jakke/tights/sokker/topp osv. — ikke en sko
 
-    # navn: «Asics <Kjønn> <Kategori> <Modell> <Størrelse>»
-    s = re.sub(r"^\s*Asics\s+", "", name, flags=re.I)
+    brand = _brand(grp, url)
+    if not brand:
+        return []                      # uten merke kan vi ikke plassere produktet
+
+    # navn: «<Merke> <Kjønn> <Kategori> <Modell> <Størrelse>»
+    s = re.sub(r"^\s*%s\s+" % re.escape(brand), "", name, flags=re.I)
     gm = GENDER_RE.match(s)
     gender = _GENDER.get((gm.group(1).lower() if gm else ""), "unisex")
     if gm:
@@ -86,6 +114,8 @@ def parse(html: str, url: str) -> list[dict]:
     cmcol = COLOR_RE.search(desc)
     color = cmcol.group(1) if cmcol else None
 
+    # Asics-stilkode fra bilde-filnavnet — for andre merker matcher regexen
+    # ikke og code blir None (EAN bærer da broen, som XXL/Löplabbet).
     code = None
     cmatch = CODE_RE.search(grp.get("image") or "")
     if cmatch:
@@ -117,7 +147,7 @@ def parse(html: str, url: str) -> list[dict]:
     product_line = re.sub(r"\s*\d+.*$", "", model).strip().lower().replace(" ", "-") or None
     return [{
         "store": {"slug": "foss", "name": "Foss Sport", "source": "scrape", "network": None},
-        "brand": "Asics", "model": model, "gender": gender,
+        "brand": brand, "model": model, "gender": gender,
         "product_line": product_line, "category": "running",
         "color": color, "manufacturer_code": code,
         "image_url": None,
