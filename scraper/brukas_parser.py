@@ -23,7 +23,9 @@ NAME_RE = re.compile(
     r"^(?P<model>.+?)\s+(?P<gender>Herre|Dame|Unisex|Barn|Junior)\s+"
     r"(?P<size>\d{1,2}(?:[.,]\d)?H?)\s+(?P<color>.+)$", re.I)
 # fallback uten kjønn
-NAME_NOGENDER = re.compile(r"^(?P<model>.+?)\s+(?P<size>\d{2}(?:[.,]\d)?)\s+(?P<color>.+)$")
+# GRÅDIG modell (5. juli): lazy grep FØRSTE tall som størrelse («Kinvara 16 44
+# Svart» -> str=16, «Ride 18 …» -> str=18); grådig ankrer på SISTE tall.
+NAME_NOGENDER = re.compile(r"^(?P<model>.+)\s+(?P<size>\d{2}(?:[.,]\d)?)\s+(?P<color>.+)$")
 _GENDER = {"herre": "herre", "dame": "dame", "unisex": "unisex",
            "barn": "barn", "junior": "barn"}
 
@@ -69,6 +71,16 @@ def parse_size(html: str, url: str = "") -> dict | None:
         model = m.group("model").strip()
         size = m.group("size")
         color = m.group("color").strip()
+        # Vakt (5. juli): outlet-sider kan mangle ekte størrelse i navnet, og
+        # da spiser fallbacken MODELLTALLET som størrelse («Saucony Ride 18
+        # Dame Summer ED» -> size=18, «Peregrine 14 GTX W…» -> size=14).
+        # Uten kjønnsord krever vi EU-skala (>=30) — dropper heller en sjelden
+        # UK-side enn å lage korrupte størrelses-rader.
+        try:
+            if float(size.replace(",", ".").rstrip("Hh")) < 30:
+                return None
+        except ValueError:
+            return None
 
     off = p.get("offers") or {}
     if isinstance(off, list):
