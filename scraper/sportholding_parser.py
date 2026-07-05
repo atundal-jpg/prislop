@@ -34,11 +34,12 @@ VIDEOLY_ID_RE = re.compile(r'videoly-product-id"[^>]*>\s*asics-([0-9a-z]+)-(.+?)
 VIDEOLY_ADIDAS_RE = re.compile(r'videoly-product-id"[^>]*>\s*adidas-([a-z]{2}\d{4,5})-(.+?)_', re.I)
 
 # Trailing Asics-stilkode i slug (4 siffer + bokstav + 3 siffer), f.eks. -1011c127.
-SLUG_CODE_RE = re.compile(r"-(\d{4}[a-z]\d{3})(?:/|\?|$)", re.I)
+# Asics-stilkode ELLER Adidas-artikkelkode på slutten av slug.
+SLUG_CODE_RE = re.compile(r"-(\d{4}[a-z]\d{3}|[a-z]{2}\d{4,5})(?:/|\?|$)", re.I)
 
 # Ord som ikke er farge når vi utleder farge fra slug.
 _DROP_TOKENS = {
-    "asics", "herre", "dame", "unisex", "barn", "junior",
+    "asics", "adidas", "herre", "dame", "unisex", "barn", "junior",
     "lopesko", "løpesko", "sko", "joggesko", "terreng",
 }
 
@@ -133,7 +134,7 @@ def parse(html: str, url: str = "", store_slug: str = "intersport",
     elif ma:
         # Adidas-artikkelkoden ER colorway-spesifikk -> hele koden som manufacturer_code.
         manufacturer_code = ma.group(1).upper()
-        toks = [t for t in ma.group(2).split("-") if not re.fullmatch(r"[a-z]{2}\d{2,}", t)]
+        toks = [t for t in ma.group(2).split("-") if not re.search(r"\d", t)]  # dropp alle sifret-tokens (junk)
         color = "/".join(t.upper() for t in toks) or None
     else:
         color = _color_from_slug(ld_url or url, model)
