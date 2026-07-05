@@ -322,9 +322,39 @@ def load(offers: list[dict]) -> dict:
                 # (forsvunne fargevarianter) som utgått — per butikk, aldri andre.
                 for sid in store_ids.values():
                     stats["stale"] += mark_unseen_stale(cur, sid, run_ts)
+                stats["sizes_rescaled"] = normalize_size_scales(cur)
     finally:
         conn.close()
     return stats
+
+
+def normalize_size_scales(cur) -> int:
+    """UK/US-labels -> EU via EAN-broen (5. juli). Enkelte butikker/PDP-er
+    lister størrelser i UK eller US (Löplabbet-Puma: to colorways i UK 6–13,
+    to i EU 39–48.5). Samme EAN = samme fysiske størrelse, så når en EAN også
+    finnes med en EU-label (30–60) et annet sted, omdøpes små-skala-labelen
+    (<30) til EU-labelen. mode() tar den vanligste ved uenighet. Labels uten
+    EU-motstykke i basen beholdes som de er (bedre enn å gjette med tabeller).
+    NOT EXISTS-guarden respekterer unique (offer_id, size_label)."""
+    cur.execute("""
+        with eu as (
+          select ean,
+                 mode() within group (order by size_label) as eu_label
+          from prislop.offer_sizes
+          where ean is not null
+            and substring(size_label from '^\\d+(?:\\.\\d+)?')::numeric between 30 and 60
+          group by ean
+        )
+        update prislop.offer_sizes os
+           set size_label = eu.eu_label
+          from eu
+         where os.ean = eu.ean
+           and substring(os.size_label from '^\\d+(?:\\.\\d+)?')::numeric < 30
+           and not exists (select 1 from prislop.offer_sizes o2
+                           where o2.offer_id = os.offer_id
+                             and o2.size_label = eu.eu_label)
+    """)
+    return cur.rowcount
 
 
 # ---------------------------------------------------------------------------
