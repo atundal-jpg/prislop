@@ -16,6 +16,7 @@ on:
           - probe_olympia.py
           - probe_adidas.py
           - probe_brands.py
+          - probe_xxl_facets.py
 
 jobs:
   probe:
