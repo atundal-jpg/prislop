@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-probe_olympia.py (v3) — finn produkt-URL-ene (ItemList/frekvens) + tile-markup.
+probe_olympia.py (v4) — riktig produkt-uttrekk + EKTE Asics-PDP-struktur.
 
-v2 bommet: produkt-bilder er lazy (data-src), og første b-cdn.net var IE-banneret.
-Theme = «Element» (nopCommerce). v3:
-  1) JSON-LD ItemList på kategorisida -> produkt-URL-er rett ut (reneste).
-  2) Frekvens-basert: interne 1-ledds-slugs (ekskl. nav) som opptrer >=2x = produkter.
-  3) Rå-dump rundt data-productid / item-box / product-item -> ekte tile-struktur.
-  4) Prober PDP-er fra funnene (JSON-LD/grid/select + EAN/kode).
+Tile-struktur bekreftet (Element-theme, nopCommerce):
+  <div class="product-item" data-productid="N">
+    <div class="picture"><a href="/<merke>-<modell>-<farge>" title="Navn">
+Produkt-URL = ren 1-ledds slug (merke-prefiks). v3 probet ved uhell merkesidene
+(/aclima …) som lå øverst på frekvens. v4 trekker ut ekte produkt-tiles, filtrerer
+til Asics, og prober Asics-PDP-er for struktur (B1 grid / B2 select / Foss-stil
+hasVariant) + EAN + stilkode + per-størrelse-lager.
+
+Sjekker også om /asics-produsentsida lister produktene (enkleste discovery-kilde)
+vs. løpekategoriene (mikset merke, må filtreres til asics-).
 Stdlib only. probe.yml (script=probe_olympia.py).
 """
 from __future__ import annotations
@@ -15,22 +19,23 @@ import json
 import re
 import urllib.request
 import urllib.error
-from collections import Counter
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.olympiasport.no"
-LISTING = "/asfaltsko"
+ENUM = ["/asics", "/asfaltsko", "/terrengsko", "/platesko", "/joggesko-herre", "/joggesko-dame"]
 
+# produkt-tile -> (href, title). Tolerant for whitespace mellom tagger.
+TILE = re.compile(
+    r'class="product-item"[^>]*data-productid="\d+">\s*'
+    r'<div class="picture">\s*<a\s+href="([^"#?]+)"\s+title="([^"]*)"', re.I)
+TILE_LOOSE = re.compile(
+    r'data-productid="\d+">(?:(?!</a>).)*?<a\s+href="(/[^"#?]+)"\s+title="([^"]*)"', re.I | re.S)
+PAGER = re.compile(r'[?&]pagenumber=(\d+)', re.I)
 LD = re.compile(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
-HREF = re.compile(r'href="(/[a-z0-9%æøå][a-z0-9%æøå\-/]*)"', re.I)
 EAN_RE = re.compile(r'\b(\d{13})\b')
 CODE_RE = re.compile(r'/(\d{4}[a-z]\d{3})[_-]', re.I)
 GRID_SPAN = re.compile(r'<span[^>]*class="[^"]*button-dropdown[^"]*"[^>]*>(.*?)</span>', re.S | re.I)
 SELECT = re.compile(r'<select\b.*?</select>', re.S | re.I)
-NAV = {"sko","lopesko","asfaltsko","terrengsko","platesko","joggesko-dame","joggesko-herre",
-       "saucony-endorphin-serien","lopeklar-2","tursko","fritidssko","arbeidssko","vernesko",
-       "sandaler","kajakk","bekledning","sportsutstyr","ski","register","login","wishlist",
-       "cart","asics","outlet","nyheter","blogg","s%c3%a5ler","havkajakk","surfski"}
 
 
 def get(path):
@@ -45,77 +50,41 @@ def get(path):
         return None, "FEIL %s" % e
 
 
-def itemlist_urls(html):
+def tiles(html):
+    t = TILE.findall(html)
+    if not t:
+        t = TILE_LOOSE.findall(html)
     out = []
-    for blk in LD.findall(html):
-        try:
-            d = json.loads(blk)
-        except Exception:
-            continue
-        for it in (d if isinstance(d, list) else [d]):
-            if isinstance(it, dict) and it.get("@type") in ("ItemList", "CollectionPage"):
-                for el in it.get("itemListElement") or []:
-                    u = (el.get("url") if isinstance(el, dict) else None) or \
-                        (el.get("item", {}).get("url") if isinstance(el, dict) and isinstance(el.get("item"), dict) else None)
-                    if u:
-                        out.append(u)
+    for href, title in t:
+        if (href, title) not in out:
+            out.append((href, title))
     return out
 
 
-def freq_slugs(html):
-    c = Counter()
-    for h in HREF.findall(html):
-        seg = h.strip("/").split("/")[0].lower()
-        if "/" in h.strip("/"):
-            continue                      # bare 1-ledds-slugs
-        if seg and seg not in NAV and not seg.startswith(("register","login","cart","wishlist")):
-            c[h] += 1
-    return c
+def is_asics(href, title):
+    return href.lower().startswith("/asics-") or "asics" in title.lower()
 
 
-def dump_around(html, needle, n=700):
-    i = html.lower().find(needle.lower())
-    if i < 0:
-        return None
-    return re.sub(r"\s+", " ", html[max(0, i-120):i+n])
-
-
-def probe_listing():
+def enumerate_sources():
     print("=" * 78)
-    print("A) PRODUKT-URL-er (/asfaltsko)")
-    st, html = get(LISTING)
-    print("  HTTP %s, %d B" % (st, len(html)))
-
-    il = itemlist_urls(html)
-    print("  JSON-LD ItemList-URL-er: %d" % len(il))
-    for u in il[:6]:
-        print("    ", u)
-
-    c = freq_slugs(html)
-    cands = [u for u, n in c.most_common() if n >= 2]
-    print("  Frekvens-kandidater (>=2x, ekskl. nav): %d" % len(cands))
-    for u in cands[:12]:
-        print("     %2dx  %s" % (c[u], u))
-
-    # rå tile-struktur
-    for marker in ["data-productid", "item-box", "product-item", "producttitle", "product-title", "productGridProducts"]:
-        seg = dump_around(html, marker)
-        if seg:
-            print("  --- rå markup rundt «%s» ---" % marker)
-            print("  " + seg[:760])
-            print("  --- slutt ---")
-            break
-
-    chosen = il or cands
-    # normaliser til paths
-    paths = []
-    for u in chosen:
-        p = u
-        if u.startswith("http"):
-            p = "/" + u.split("/", 3)[3] if u.count("/") >= 3 else u
-        if p not in paths:
-            paths.append(p)
-    return paths[:3]
+    print("A) ENUMERERING — riktig tile-uttrekk")
+    asics_urls = []
+    for path in ENUM:
+        st, html = get(path)
+        t = tiles(html)
+        a = [(h, ti) for (h, ti) in t if is_asics(h, ti)]
+        last = max([int(x) for x in PAGER.findall(html)] or [1])
+        st2, html2 = get(path + "?pagenumber=2")
+        new = len(set(tiles(html2)) - set(t))
+        print("  %-18s HTTP %s | %3d tiles (%3d asics) | pager-max=%s | side2-nye=%d"
+              % (path, st, len(t), len(a), last, new))
+        for h, ti in a:
+            if h not in [u for u, _ in asics_urls]:
+                asics_urls.append((h, ti))
+    print("  -- Asics-produkt-URL-er funnet totalt (unike): %d" % len(asics_urls))
+    for h, ti in asics_urls[:8]:
+        print("     %s  (%s)" % (h, ti))
+    return [h for h, _ in asics_urls[:3]]
 
 
 def probe_pdp(path):
@@ -138,40 +107,55 @@ def probe_pdp(path):
                 if isinstance(off, list):
                     off = off[0] if off else {}
                 hv = it.get("hasVariant") or []
-                print("  JSON-LD %s: name=%r gtin=%s sku=%s price=%s avail=%s hasVariant=%d"
+                print("  JSON-LD %s: name=%r gtin=%s sku=%s mpn=%s price=%s avail=%s hasVariant=%d"
                       % (it.get("@type"), it.get("name"), it.get("gtin") or it.get("gtin13"),
-                         it.get("sku"), off.get("price"), off.get("availability"), len(hv)))
+                         it.get("sku"), it.get("mpn"), off.get("price"), off.get("availability"), len(hv)))
                 if hv and isinstance(hv[0], dict):
-                    print("      variant[0]: size=%s gtin13=%s" % (hv[0].get("size"), hv[0].get("gtin13")))
+                    v0 = hv[0]
+                    vo = v0.get("offers") or {}
+                    if isinstance(vo, list):
+                        vo = vo[0] if vo else {}
+                    print("      variant[0]: size=%s gtin13=%s avail=%s" % (v0.get("size"), v0.get("gtin13"), vo.get("availability")))
     if not ok:
         print("  JSON-LD Product/ProductGroup: INGEN")
+
+    # B1: grid m/ søsken-URL-er?
     gm = GRID_SPAN.search(html)
     if gm:
         hrefs = re.findall(r'href="([^"#?]+)"', gm.group(1))
         print("  [B1] button-dropdown-GRID: %d søsken-lenker" % len(hrefs))
         for h in hrefs[:6]:
             print("       ", h)
-    sels = [s for s in SELECT.findall(html) if re.search(r"st\xf8rrelse|size|str\b", s, re.I)]
-    if sels:
-        opts = re.findall(r"<option[^>]*>(.*?)</option>", sels[0], re.S)
+
+    # B2: størrelses-select / attributt? dump den ekte markupen
+    size_sel = [s for s in SELECT.findall(html) if re.search(r"st\xf8rrelse|size|str\b|product_attribute", s, re.I)]
+    if size_sel:
+        opts = re.findall(r"<option[^>]*value=\"?(\d+)?\"?[^>]*>(.*?)</option>", size_sel[0], re.S)
         print("  [B2] størrelses-SELECT: %d options" % len(opts))
-        print("       ", " | ".join(re.sub(r"\s+", " ", o).strip() for o in opts[:12]))
-    if not gm and not sels:
-        seg = dump_around(html, "st\xf8rrelse", 1300)
-        print("  rundt «Størrelse»:", (seg[:1300] if seg else "(ikke funnet)"))
-    print("  EAN-kandidater:", sorted(set(EAN_RE.findall(html)))[:6] or "INGEN")
+        print("       ", " | ".join(re.sub(r"\s+", " ", o[1]).strip() for o in opts[:14]))
+    attr = re.search(r'class="attributes"[^>]*>(.*?)</dl>|class="attribute-squares"[^>]*>(.*?)</ul>', html, re.S | re.I)
+    if attr:
+        seg = re.sub(r"\s+", " ", (attr.group(1) or attr.group(2) or ""))
+        print("  attributt-blokk (rå):", seg[:900])
+    if not gm and not size_sel and not attr:
+        i = html.lower().find("st\xf8rrelse")
+        print("  rundt «Størrelse»:", re.sub(r"\s+", " ", html[max(0, i-100):i+1200])[:1200] if i >= 0 else "(ikke funnet)")
+
+    print("  EAN-kandidater:", sorted(set(EAN_RE.findall(html)))[:8] or "INGEN")
     print("  stilkode-kandidater:", sorted(set(CODE_RE.findall(html)))[:4] or "INGEN")
+    stock = {w: len(re.findall(w, html, re.I)) for w in ["på lager", "utsolgt", "ikke på lager", "in stock", "out of stock"]}
+    print("  lager-ord:", {k: v for k, v in stock.items() if v})
 
 
 def main():
-    print("probe_olympia v3 — ItemList/frekvens + tile-markup\n")
-    pdps = probe_listing()
-    print("\nB/C) PDP-INSPEKSJON")
+    print("probe_olympia v4 — riktig tiles + ekte Asics-PDP\n")
+    pdps = enumerate_sources()
+    print("\nB/C) ASICS-PDP-INSPEKSJON")
     for p in pdps:
         probe_pdp(p)
     print("\nKONKLUSJON-HINT:")
-    print("  ItemList eller frekvens-slugs gir produkt-URL-mønsteret for discovery.")
-    print("  PDP: grid=B1(Brukås) | select=B2(inline) | hasVariant+gtin13=Foss-stil.")
+    print("  Enumerering: bruk /asics hvis den lister alle; ellers løpekategoriene + asics-filter.")
+    print("  PDP: grid=B1(Brukås) | select/attr=B2(inline) | hasVariant+gtin13=Foss-stil.")
 
 
 if __name__ == "__main__":
