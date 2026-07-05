@@ -60,6 +60,33 @@ def _strip_lead_tokens(toks: list[str]) -> list[str]:
         break
     return toks
 
+
+# Trailing tokens som ikke er del av modellidentiteten (DQ-runde 2, 5. juli):
+#  - kjønnsbokstav-SUFFIKS («Adizero Boston 12 M», «Supernova Rise W», «Guide 16, W»)
+#  - norske beskrivelses-haler («… Piggsko Terreng», «Pegasus Plus Løpeesko»).
+#    NB: «trail» strippes ALDRI («Invincible Trail» er et ekte modellnavn) —
+#    kun de norske sko-ordene, som aldri er del av et modellnavn.
+#  - engelske produktbeskrivelser kuttes fra og med Men's/Women's
+#    («Pegasus 42 Men's Road Running Shoes»)
+# Token-kart: Löplabbet oversetter Wide->«Bred» (Hoka); Intersport forkorter
+# «Jakob Ingebrigtsen»->«Ji» (Nike-signaturmodeller).
+_TRAIL_GENDER = {"m", "w", "u", "wmns"}
+_TRAIL_NOISE = {"løpesko", "løpeesko", "terrengløpesko", "joggesko",
+                "piggsko", "terreng"}
+_CUT_FROM = {"men's", "mens", "women's", "womens"}
+_TOKEN_MAP = {"bred": "wide", "ji": "jakob ingebrigtsen"}
+
+
+def _clean_tail_tokens(toks: list[str]) -> list[str]:
+    """Kutt ved Men's/Women's, dropp trailing støy-/kjønnstokens (lowercase)."""
+    for i, t in enumerate(toks):
+        if t in _CUT_FROM:
+            toks = toks[:i]
+            break
+    while len(toks) > 1 and (toks[-1] in _TRAIL_NOISE or toks[-1] in _TRAIL_GENDER):
+        toks = toks[:-1]
+    return toks
+
 _GENDER_FIX = {"herre": "herre", "menn": "herre", "men": "herre",
                "dame": "dame", "kvinne": "dame", "women": "dame",
                "unisex": "unisex", "barn": "barn", "junior": "barn", "jr": "barn"}
@@ -79,7 +106,8 @@ def norm_model(model: str) -> str:
     foren Gore-Tex/GTX, kollaps sammensatte navn, og legg på 'gel-' der en
     bar Asics-linje mangler det."""
     m = (model or "").lower()
-    m = re.sub(r"[\-/]", " ", m)
+    m = re.sub(r"[\"'«»„“”|]", "", m)              # anførselstegn/pipe fra butikk-SEO-navn
+    m = re.sub(r"[\-/,]", " ", m)
     m = re.sub(r"\s+", " ", m).strip()
     # Gore-Tex == GTX: butikker veksler mellom skrivemåtene (XXL: "Gore-Tex",
     # Intersport/seed: "GTX"). Foren til "gtx" så samme sko matcher på tvers.
@@ -90,6 +118,8 @@ def norm_model(model: str) -> str:
     for sp, joined in _COMPOUNDS:
         m = m.replace(sp, joined)
     toks = _strip_lead_tokens(m.split(" "))
+    toks = [_TOKEN_MAP.get(t, t) for t in toks]
+    toks = _clean_tail_tokens(" ".join(toks).split(" "))
     # "nimbus 27" -> "gel-nimbus 27"
     if toks and toks[0] in _GEL_LINES:
         toks[0] = "gel-" + toks[0]
@@ -153,11 +183,22 @@ def split_model_gender(model: str) -> tuple[str, str | None]:
     return s, lead_gender
 
 
+def _clean_tail_display(s: str) -> str:
+    """Samme hale-rens som match-nøkkelen, men case-bevarende: kutter Men's/
+    Women's-beskrivelser og trailing støy-/kjønnstokens fra visningsnavnet."""
+    words = [w for w in s.replace(",", " ").split() if w]
+    cleaned = _clean_tail_tokens([w.lower() for w in words])
+    return " ".join(words[:len(cleaned)]) if cleaned else s
+
+
 def canonical_model(model: str) -> str:
-    """Pent visningsnavn: kjønn/farge/merke-/markedsføringsprefiks strippet,
-    Gore-Tex/G-TX -> GTX, riktig casing."""
+    """Pent visningsnavn: kjønn/farge/merke-/markedsføringsprefiks og
+    beskrivelses-haler strippet, Gore-Tex/G-TX -> GTX, riktig casing."""
     cleaned, _ = split_model_gender(model)
+    cleaned = re.sub(r"[\"'«»„“”|]", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     cleaned = _strip_lead_display(cleaned)
+    cleaned = _clean_tail_display(cleaned)
     s = re.sub(r"\bgore[\s-]?tex\b", "GTX", cleaned, flags=re.I)
     s = re.sub(r"\bg-tx\b", "GTX", s, flags=re.I)
     for sp, joined in _COMPOUNDS:                       # "Fuji Speed" -> "FujiSpeed"
