@@ -36,7 +36,10 @@ from fetch import Fetcher
 
 # Merker × modeller vi jakter på. Butikker som ikke fører et merke gir [] fra
 # discovery (by_brand-gate) og hopper stille videre.
-BRANDS = ["Asics", "Adidas"]
+# NB: Alle 8 aktive butikker kjører take-all/cachede discovery-moduser, så
+# MODELS-listene er i praksis INERTE for discovery (hele merkekatalogen hentes
+# uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
+BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun"]
 STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss"]   # de feed-løse butikkene
 
 MODELS = {
@@ -62,6 +65,29 @@ MODELS = {
         "Ultraboost 5", "Ultraboost 5X",
         "Supernova Rise 2", "Supernova Prima", "Supernova Solution",
         "Terrex Agravic 3", "Terrex Agravic Speed", "Terrex Soulstride 2",
+    ],
+    "Saucony": [
+        "Endorphin Speed 5", "Endorphin Pro 5", "Endorphin Elite 2",
+        "Ride 18", "Guide 18", "Triumph 23", "Kinvara 16", "Tempus 2",
+        "Peregrine 15", "Hurricane 25", "Xodus Ultra 4",
+    ],
+    "Nike": [
+        "Pegasus 42", "Pegasus Premium", "Pegasus Plus",
+        "Vomero 18", "Vomero Plus", "Structure 26", "Invincible 4",
+        "Alphafly 3", "Vaporfly 4", "Streakfly 2",
+        "Pegasus Trail 5", "Zegama 2",
+    ],
+    "Hoka": [
+        "Clifton 10", "Bondi 9", "Mach 6", "Mach X 2", "Arahi 8",
+        "Rincon 5", "Skyward X", "Rocket X 3", "Cielo X1 2.0",
+        "Speedgoat 6", "Challenger 8", "Tecton X 3", "Torrent 4",
+    ],
+    "Puma": [
+        "Deviate Nitro 3", "Velocity Nitro 4", "ForeverRun Nitro 2",
+        "Magnify Nitro 2", "Fast-R Nitro Elite 3", "Voyage Nitro 4",
+    ],
+    "Kiprun": [
+        "KD900X", "KS900", "KD800", "KS500 2", "KD500 3",
     ],
 }
 
