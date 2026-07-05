@@ -34,10 +34,13 @@ import discovery
 import loader
 from fetch import Fetcher
 
-BRAND = "Asics"
+# Merker × modeller vi jakter på. Butikker som ikke fører et merke gir [] fra
+# discovery (by_brand-gate) og hopper stille videre.
+BRANDS = ["Asics", "Adidas"]
 STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss"]   # de feed-løse butikkene
 
-MODELS = [
+MODELS = {
+    "Asics": [
     "Gel-Nimbus 27", "Nimbus 28", "Nimbus 28 ATC",
     "Glideride Max", "Glideride Max 2",
     "Sonicblast", "Megablast", "Superblast 2", "Superblast 3",
@@ -50,7 +53,17 @@ MODELS = [
     "Novablast 5", "Novablast 5 ATC",
     "MetaSpeed Edge Tokyo", "MetaSpeed Sky Tokyo",
     "Gel-FujiSetsu 3 GTX", "FujiSetsu Max GTX", "Fuji Lite 6",
-]
+],
+    "Adidas": [
+        "Adizero SL 2", "Adizero SL 3",
+        "Adizero Boston 13", "Adizero Adios 9",
+        "Adizero Adios Pro 4", "Adizero Adios Pro Evo 2",
+        "Adizero Evo SL", "Adizero Takumi Sen 11",
+        "Ultraboost 5", "Ultraboost 5X",
+        "Supernova Rise 2", "Supernova Prima", "Supernova Solution",
+        "Terrex Agravic 3", "Terrex Agravic Speed", "Terrex Soulstride 2",
+    ],
+}
 
 PRODUCTS_PER_MODEL = 6          # tak på fargevarianter per modell per butikk
 
@@ -68,16 +81,17 @@ def harvest_store(fetcher, slug: str) -> list[dict]:
     # 1) Discovery (sekvensielt per modell) -> unik URL-liste. Rask: de fleste
     #    butikker cacher hele lista på første kall (resten blir no-ops via seen).
     urls, seen = [], set()
-    for model in MODELS:
-        try:
-            found = discovery.discover(fetcher, slug, BRAND, model, limit=PRODUCTS_PER_MODEL)
-        except Exception as e:
-            print(f"  [{slug}] discovery-feil «{model}»: {e}")
-            continue
-        for url in found:
-            if url not in seen:
-                seen.add(url)
-                urls.append(url)
+    for brand in BRANDS:
+        for model in MODELS[brand]:
+            try:
+                found = discovery.discover(fetcher, slug, brand, model, limit=PRODUCTS_PER_MODEL)
+            except Exception as e:
+                print(f"  [{slug}] discovery-feil «{brand} {model}»: {e}")
+                continue
+            for url in found:
+                if url not in seen:
+                    seen.add(url)
+                    urls.append(url)
 
     # 2) Hent + parse produktsidene PARALLELT, men med et avgrenset tak per
     #    butikk (= per domene). Throttlen i Fetcher er nå per tråd, så
