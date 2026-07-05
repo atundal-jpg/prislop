@@ -36,6 +36,30 @@ _BRAND_FIX = {"asics": "Asics", "nike": "Nike", "adidas": "adidas",
               "saucony": "Saucony", "mizuno": "Mizuno", "puma": "Puma",
               "kiprun": "Kiprun"}
 
+# Ledende tokens som IKKE er del av modellidentiteten (bølge 2, 5. juli):
+#  - merkenavn lekket inn i modellen («Saucony Guide 18», «Nike Pegasus Plus»)
+#  - kjønnsbokstaver («M Mach 6», «W Vomero 18», «WMNS Air Winflo 11»)
+#  - Nike-markedsføringsprefikser («Air Zoom Pegasus 42», «Zoomx Vaporfly 4»,
+#    «Reactx Pegasus Trail 5», «Air Winflo 11»). NB: bare «zoom» strippes
+#    ALDRI alene — «Zoom Fly» er et ekte modellnavn («air zoom» tas som par).
+_LEAD_BRAND_TOKENS = {"asics", "adidas", "nike", "hoka", "saucony", "puma", "kiprun"}
+_LEAD_DROP_TOKENS = {"zoomx", "reactx"}
+
+
+def _strip_lead_tokens(toks: list[str]) -> list[str]:
+    """Fjern ledende merke-/kjønns-/markedsføringstokens (lowercase input).
+    Itererer: «nike zoomx zoom fly 6» -> «zoom fly 6»."""
+    while toks:
+        t = toks[0]
+        if t in _LEAD_BRAND_TOKENS or t in _LEAD_DROP_TOKENS or t in _LEAD_GENDER:
+            toks = toks[1:]
+            continue
+        if t == "air":
+            toks = toks[2:] if len(toks) >= 2 and toks[1] == "zoom" else toks[1:]
+            continue
+        break
+    return toks
+
 _GENDER_FIX = {"herre": "herre", "menn": "herre", "men": "herre",
                "dame": "dame", "kvinne": "dame", "women": "dame",
                "unisex": "unisex", "barn": "barn", "junior": "barn", "jr": "barn"}
@@ -65,7 +89,7 @@ def norm_model(model: str) -> str:
     # ("Fuji Speed" vs "FujiSpeed") -> kollaps, ellers splittes samme sko.
     for sp, joined in _COMPOUNDS:
         m = m.replace(sp, joined)
-    toks = m.split(" ")
+    toks = _strip_lead_tokens(m.split(" "))
     # "nimbus 27" -> "gel-nimbus 27"
     if toks and toks[0] in _GEL_LINES:
         toks[0] = "gel-" + toks[0]
@@ -86,7 +110,7 @@ def product_key(brand: str, model: str, gender: str) -> tuple:
 # her får alle samme rene form.
 _CAMEL = {"metaspeed": "MetaSpeed", "fujispeed": "FujiSpeed",
           "fujisetsu": "FujiSetsu", "metafuji": "MetaFuji"}
-_UPPER = {"gt", "gtx", "atc", "tr", "mt", "ps", "ff", "wmns"}  # tokens som forblir versaler
+_UPPER = {"gt", "gtx", "atc", "tr", "mt", "ps", "ff", "wmns", "atr"}  # tokens som forblir versaler
 
 
 def _cap_token(t: str) -> str:
@@ -100,18 +124,40 @@ def _cap_token(t: str) -> str:
     return (t[:1].upper() + t[1:].lower()) if t else t
 
 
+def _strip_lead_display(s: str) -> str:
+    """Samme ledende-token-strip som match-nøkkelen, men case-bevarende, så
+    visningsnavnet blir «Pegasus 42» av «Nike Air Zoom Pegasus 42»."""
+    words = s.split()
+    lowered = _strip_lead_tokens([w.lower() for w in words])
+    return " ".join(words[len(words) - len(lowered):]) if lowered else s
+
+
+_LEAD_GENDER = {"m": "herre", "w": "dame", "u": "unisex",
+                "wmns": "dame", "mens": "herre", "womens": "dame"}
+
+
 def split_model_gender(model: str) -> tuple[str, str | None]:
     """Trekk ut kjønnsord som har lekket inn i modellnavnet og kutt der.
-    «Novablast 5 ATC Dame Grå/Sølv» -> ('Novablast 5 ATC', 'dame')."""
-    m = re.search(r"\b(Herre|Dame|Barn|Unisex)\b", model or "", re.I)
+    «Novablast 5 ATC Dame Grå/Sølv» -> ('Novablast 5 ATC', 'dame').
+    Håndterer også LEDENDE kjønnsbokstaver (Hoka/Nike/Saucony-stil):
+    «M Mach 6» -> ('Mach 6', 'herre'), «WMNS Air Winflo 11» -> (…, 'dame')."""
+    s = (model or "").strip()
+    lead_gender = None
+    m = re.match(r"^(M|W|U|WMNS|Mens|Womens)\b[\s-]*", s, re.I)
     if m:
-        return model[:m.start()].strip(), m.group(1).lower()
-    return (model or "").strip(), None
+        lead_gender = _LEAD_GENDER.get(m.group(1).lower())
+        s = s[m.end():].strip()
+    m = re.search(r"\b(Herre|Dame|Barn|Unisex)\b", s, re.I)
+    if m:
+        return s[:m.start()].strip(), m.group(1).lower()
+    return s, lead_gender
 
 
 def canonical_model(model: str) -> str:
-    """Pent visningsnavn: kjønn/farge strippet, Gore-Tex/G-TX -> GTX, riktig casing."""
+    """Pent visningsnavn: kjønn/farge/merke-/markedsføringsprefiks strippet,
+    Gore-Tex/G-TX -> GTX, riktig casing."""
     cleaned, _ = split_model_gender(model)
+    cleaned = _strip_lead_display(cleaned)
     s = re.sub(r"\bgore[\s-]?tex\b", "GTX", cleaned, flags=re.I)
     s = re.sub(r"\bg-tx\b", "GTX", s, flags=re.I)
     for sp, joined in _COMPOUNDS:                       # "Fuji Speed" -> "FujiSpeed"
