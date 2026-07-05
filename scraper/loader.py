@@ -224,6 +224,15 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, run_ts=None) ->
         price_changed = price is not None
 
     if price_changed:
+        # Same-run-idempotent: aksepteres en BILLIGERE duplikat-record senere i
+        # samme kjøring (XXL-dobbeltartikler), skal kjøringens history-rad
+        # ERSTATTES, ikke suppleres — ellers får historikken et falskt hopp
+        # (729 -> 289) innen samme tx (28 tilbud i kjøringen 5. juli 17:36Z).
+        if run_ts is not None:
+            cur.execute(
+                "delete from prislop.price_history where offer_id = %s and observed_at >= %s",
+                (offer_id, run_ts),
+            )
         cur.execute(
             "insert into prislop.price_history (offer_id, price, currency) values (%s, %s, %s)",
             (offer_id, price, currency),
