@@ -93,7 +93,16 @@ STORES = {
         "name": "XXL",
         "base": "https://www.xxl.no",
         # Kategoriside — brukes bare som fallback hvis eSales-API-et svikter. q ignoreres.
-        "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
+        "by_brand": {
+            "asics": {
+                "brand_filter": "Asics",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/Asics/c/140202?f.brand=Asics",
+            },
+            "adidas": {   # facet verifisert i probe: /adidas/c/140202
+                "brand_filter": "adidas",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/adidas/c/140202?f.brand=adidas",
+            },
+        },
         # Apptus eSales: henter ALLE produkt-URL-er (paginert), ikke bare side 1.
         "mode": "esales_api",
         "api": {
@@ -119,7 +128,18 @@ STORES = {
         "name": "Torshov Sport",
         "base": "https://www.torshovsport.no",
         # Jetshop Flight. Sida server-rendrer bare side 1 -> vi henter alt via GraphQL.
-        "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/asics-lopesko",
+        "by_brand": {
+            "asics": {
+                "cat_slug": "asics-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/asics-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/asics-lopesko/asics-[a-z0-9-]+", re.I),
+            },
+            "adidas": {   # kategorien finnes (probe v1: 2,6 MB Apollo-state)
+                "cat_slug": "adidas-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/adidas-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/adidas-lopesko/[a-z0-9-]+", re.I),
+            },
+        },
         "mode": "jetshop_api",
         "api": {
             "graphQLURI": "https://storeapi.jetshop.io",
@@ -128,8 +148,7 @@ STORES = {
             "token": "359fd7c1-8e72-4270-b899-2bda9ae6ef57",
             "page_size": 40,
         },
-        # Fallback hvis API-et svikter: href-skrap side 1 av samme liste.
-        "link_re": re.compile(r"/lop/lopesko/vare-merker/asics-lopesko/asics-[a-z0-9-]+", re.I),
+        # Fallback hvis API-et svikter: href-skrap side 1 (link_re per merke over).
         "take_all": True,
         "marker_re": None,
         "adapter": _torshov,
@@ -145,24 +164,48 @@ STORES = {
         "name": "Intersport",
         "base": "https://www.intersport.no",
         "mode": "sportholding_pages",
-        "listing_urls": ["https://www.intersport.no/asics"],
-        "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        "by_brand": {
+            "asics": {
+                "listing_urls": ["https://www.intersport.no/asics"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+            },
+            "adidas": {   # slug ender med Adidas-artikkelkode (hq1345, js4945 …)
+                "listing_urls": ["https://www.intersport.no/adidas"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
+        },
         "adapter": _intersport,
     },
     "sport1": {
         "name": "Sport 1",
         "base": "https://www.sport1.no",
         "mode": "sportholding_pages",
-        "listing_urls": ["https://www.sport1.no/asics"],
-        "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        "by_brand": {
+            "asics": {
+                "listing_urls": ["https://www.sport1.no/asics"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+            },
+            "adidas": {   # slug ender med Adidas-artikkelkode (hq1345, js4945 …)
+                "listing_urls": ["https://www.sport1.no/adidas"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
+        },
         "adapter": _sport1,
     },
     "loplabbet": {
         "name": "Löplabbet",
         "base": "https://loplabbet.no",
         "mode": "sportholding_pages",
-        "listing_urls": ["https://loplabbet.no/lopesko?Brand=ASICS"],
-        "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+        "by_brand": {
+            "asics": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=ASICS"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{4}[a-z]\d{3}/?($|\?)", re.I),
+            },
+            "adidas": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=ADIDAS"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
+        },
         "adapter": _loplabbet,
     },
     # Bull Ski & Kajakk — Drupal Commerce 2. Listing rendres klient-side via
@@ -229,15 +272,17 @@ _JETSHOP_QUERY = (
 )
 
 
-def _torshov_category_id(html: str) -> str | None:
-    """Les kategori-id ut av Apollo-staten (Route -> Category:NNN)."""
+def _torshov_category_id(html: str, cat_slug: str = "asics-lopesko") -> str | None:
+    """Les kategori-id ut av Apollo-staten (Route -> Category:NNN) for gitt
+    merkekategori-slug (f.eks. asics-lopesko / adidas-lopesko)."""
+    brand_word = cat_slug.split("-", 1)[0].lower()
     try:
         state = torshov_parser._extract_apollo(html)
     except Exception:
         return None
     for node in state.values():
         if isinstance(node, dict) and node.get("__typename") == "Route" \
-                and "asics-lopesko" in str(node.get("path", "")):
+                and cat_slug in str(node.get("path", "")):
             obj = node.get("object") or {}
             oid = obj.get("id") if isinstance(obj, dict) else None
             if oid and str(oid).startswith("Category:"):
@@ -246,7 +291,7 @@ def _torshov_category_id(html: str) -> str | None:
     for key, node in state.items():
         if isinstance(node, dict) and node.get("__typename") == "Category":
             name = (node.get("name") or "").lower()
-            if "asics" in name and ("løpesko" in name or "lopesko" in name):
+            if brand_word in name and ("løpesko" in name or "lopesko" in name):
                 return key.split(":", 1)[1]
     return None
 
@@ -577,14 +622,31 @@ def _foss_paths(cfg: dict) -> list[str]:
 
 
 def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -> list[str]:
-    cfg = STORES[store_slug]
+    base_cfg = STORES[store_slug]
+    b = (brand or "").strip().lower()
+
+    # Flermerke: butikker med "by_brand" får merke-spesifikke felter lagt oppå
+    # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter…).
+    # Mangler merket i by_brand -> butikken fører/støtter det ikke -> [].
+    # Butikker UTEN by_brand er (ennå) merke-bundne til Asics (Brukås/Foss/Bull).
+    per = base_cfg.get("by_brand")
+    if per is not None:
+        if b not in per:
+            return []
+        cfg = dict(base_cfg)
+        cfg.update(per[b])
+    else:
+        if b != "asics":
+            return []
+        cfg = base_cfg
+    cache_key = f"{store_slug}:{b}"
 
     # Jetshop GraphQL (Torshov): hent ALLE produkter direkte fra API-et, paginert.
     if cfg.get("mode") == "jetshop_api":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
         html = fetcher.get(cfg["search_url"](""))
-        cat_id = _torshov_category_id(html) if html else None
+        cat_id = _torshov_category_id(html, cfg.get("cat_slug", "asics-lopesko")) if html else None
         paths = _jetshop_paths(cfg["api"], cat_id) if cat_id else []
         out, seen = [], set()
         for p in paths:
@@ -600,15 +662,17 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                 if url.startswith(cfg["base"]) and url not in seen:
                     seen.add(url)
                     out.append(url)
-        _LIST_CACHE[store_slug] = out[:500]
-        return _LIST_CACHE[store_slug]
+        _LIST_CACHE[cache_key] = out[:500]
+        return _LIST_CACHE[cache_key]
 
     # Apptus eSales (XXL): hent ALLE produkt-URL-er direkte fra API-et, paginert.
     if cfg.get("mode") == "esales_api":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
         out, seen = [], set()
-        for p in _esales_paths(cfg["api"]):
+        _api = dict(cfg["api"])
+        _api["brand_filter"] = cfg.get("brand_filter", _api.get("brand_filter"))
+        for p in _esales_paths(_api):
             url = urljoin(cfg["base"], p)
             if url.startswith(cfg["base"]) and url not in seen:
                 seen.add(url)
@@ -623,15 +687,15 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                     if url.startswith(cfg["base"]) and url not in seen:
                         seen.add(url)
                         out.append(url)
-        _LIST_CACHE[store_slug] = out[:500]
-        return _LIST_CACHE[store_slug]
+        _LIST_CACHE[cache_key] = out[:500]
+        return _LIST_CACHE[cache_key]
 
     # SportHolding (Intersport / Sport 1 / Löplabbet): gå side for side over
     # merke-/kategori-listen til en side ikke gir nye produkt-lenker -> full
     # katalog. Modell-uavhengig, så vi cacher og henter bare én gang per kjøring.
     if cfg.get("mode") == "sportholding_pages":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
         marker = cfg["marker_re"]
         out, seen = [], set()
         for seed in cfg["listing_urls"]:
@@ -652,29 +716,29 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                     new += 1
                 if new == 0:        # ingen nye produkter på denne sida -> ferdig
                     break
-        _LIST_CACHE[store_slug] = out[:1000]
-        return _LIST_CACHE[store_slug]
+        _LIST_CACHE[cache_key] = out[:1000]
+        return _LIST_CACHE[cache_key]
 
     # Bull (Drupal Commerce 2): enumerer Asics-løpesko fra JSON-API-et, paginert.
     if cfg.get("mode") == "bull_api":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
-        _LIST_CACHE[store_slug] = _bull_api_paths(cfg)[:1000]
-        return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
+        _LIST_CACHE[cache_key] = _bull_api_paths(cfg)[:1000]
+        return _LIST_CACHE[cache_key]
 
     # Brukås (nopCommerce): paginer løpekategoriene, behold Asics-slugs.
     if cfg.get("mode") == "nopcommerce_pages":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
-        _LIST_CACHE[store_slug] = _nopcommerce_paths(cfg)[:2000]
-        return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
+        _LIST_CACHE[cache_key] = _nopcommerce_paths(cfg)[:2000]
+        return _LIST_CACHE[cache_key]
 
     # Foss (Demonstrare): enumerer Asics-produkter fra sitemap.
     if cfg.get("mode") == "foss_sitemap":
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
-        _LIST_CACHE[store_slug] = _foss_paths(cfg)[:1000]
-        return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
+        _LIST_CACHE[cache_key] = _foss_paths(cfg)[:1000]
+        return _LIST_CACHE[cache_key]
 
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
     if not html:
@@ -682,16 +746,16 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
 
     # Take-all: kategori-stores der hele sida er riktig merke+kategori.
     if cfg.get("take_all") and cfg.get("link_re"):
-        if store_slug in _LIST_CACHE:
-            return _LIST_CACHE[store_slug]
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
         out, seen = [], set()
         for path in cfg["link_re"].findall(html):
             url = urljoin(cfg["base"], path)
             if url.startswith(cfg["base"]) and url not in seen:
                 seen.add(url)
                 out.append(url)
-        _LIST_CACHE[store_slug] = out[:200]   # sikkerhetstak
-        return _LIST_CACHE[store_slug]
+        _LIST_CACHE[cache_key] = out[:200]   # sikkerhetstak
+        return _LIST_CACHE[cache_key]
 
     # Standard: plukk href-lenker og filtrer per modell.
     out, seen = [], set()
