@@ -172,8 +172,9 @@ STORES = {
             "adidas": {   # slug ender med Adidas-artikkelkode (hq1345, js4945 …).
                 # Kategori-skopet (løpesko + terrengløpesko), IKKE /adidas (hele
                 # merkekatalogen: fotball/klær). Verifisert sti på Intersport.
-                "listing_urls": ["https://www.intersport.no/sportsutstyr/loping/sko/adidas+lopesko/",
-                                 "https://www.intersport.no/sportsutstyr/loping/sko/adidas+terrenglopesko/"],
+                # Løpesko-kategorien (inkl. terrengløpesko) + Brand-param — samme
+                # mønster som Löplabbets ?Brand=ASICS (samme plattform).
+                "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=ADIDAS"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
         },
@@ -191,8 +192,9 @@ STORES = {
             "adidas": {   # slug ender med Adidas-artikkelkode (hq1345, js4945 …).
                 # Kategori-skopet (løpesko + terrengløpesko), IKKE /adidas (hele
                 # merkekatalogen: fotball/klær). Verifisert sti på Intersport.
-                "listing_urls": ["https://www.sport1.no/sportsutstyr/loping/sko/adidas+lopesko/",
-                                 "https://www.sport1.no/sportsutstyr/loping/sko/adidas+terrenglopesko/"],
+                # Løpesko-kategorien (inkl. terrengløpesko) + Brand-param — samme
+                # mønster som Löplabbets ?Brand=ASICS (samme plattform).
+                "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=ADIDAS"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
         },
