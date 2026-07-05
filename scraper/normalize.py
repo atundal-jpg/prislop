@@ -33,7 +33,8 @@ _COMPOUNDS = [("fuji speed", "fujispeed"), ("meta speed", "metaspeed"),
 
 _BRAND_FIX = {"asics": "Asics", "nike": "Nike", "adidas": "adidas",
               "new balance": "New Balance", "hoka": "Hoka", "brooks": "Brooks",
-              "saucony": "Saucony", "mizuno": "Mizuno", "puma": "Puma"}
+              "saucony": "Saucony", "mizuno": "Mizuno", "puma": "Puma",
+              "kiprun": "Kiprun"}
 
 _GENDER_FIX = {"herre": "herre", "menn": "herre", "men": "herre",
                "dame": "dame", "kvinne": "dame", "women": "dame",
