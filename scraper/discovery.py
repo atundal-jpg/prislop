@@ -102,6 +102,13 @@ STORES = {
                 "brand_filter": "adidas",
                 "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/adidas/c/140202?f.brand=adidas",
             },
+            "nike": {     # facet «Nike» verifisert i probe_brands (95 produkter)
+                "brand_filter": "Nike",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/nike/c/140202?f.brand=Nike",
+            },
+            # XXL fører også Hoka/Saucony/Puma, men eSales-facet-navnene er
+            # ukjente (probe med .capitalize() ga 0). Kjør probe_xxl_facets.py
+            # for å finne dem, og legg dem inn her når de er verifisert.
         },
         # Apptus eSales: henter ALLE produkt-URL-er (paginert), ikke bare side 1.
         "mode": "esales_api",
@@ -138,6 +145,29 @@ STORES = {
                 "cat_slug": "adidas-lopesko",
                 "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/adidas-lopesko",
                 "link_re": re.compile(r"/lop/lopesko/vare-merker/adidas-lopesko/[a-z0-9-]+", re.I),
+            },
+            # Verifisert i probe_brands (5. juli): saucony 66 · nike 183 ·
+            # puma 46 · kiprun 15. NB: Torshov har IKKE hoka-lopesko (404) —
+            # hoka skal derfor IKKE inn her.
+            "saucony": {
+                "cat_slug": "saucony-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/saucony-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/saucony-lopesko/[a-z0-9-]+", re.I),
+            },
+            "nike": {
+                "cat_slug": "nike-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/nike-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/nike-lopesko/[a-z0-9-]+", re.I),
+            },
+            "puma": {
+                "cat_slug": "puma-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/puma-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/puma-lopesko/[a-z0-9-]+", re.I),
+            },
+            "kiprun": {
+                "cat_slug": "kiprun-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/kiprun-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/kiprun-lopesko/[a-z0-9-]+", re.I),
             },
         },
         "mode": "jetshop_api",
@@ -177,6 +207,17 @@ STORES = {
                 "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=ADIDAS"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
+            # probe_brands 5. juli: saucony ~43 · nike ~65. Kodeformater fra
+            # slug-haler: Saucony 5 siffer (11023), Nike [a-z]{2}\d{4} (hj8485,
+            # samme mønster som Adidas).
+            "saucony": {
+                "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=SAUCONY"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+            },
+            "nike": {
+                "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=NIKE"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
         },
         "adapter": _intersport,
     },
@@ -197,6 +238,16 @@ STORES = {
                 "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=ADIDAS"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
+            # probe_brands 5. juli: saucony 50 · hoka 70. Nike bevisst UTELATT
+            # (Sport 1 hadde kun 1 Nike-produkt). Hoka-kode = 7 siffer (1162031).
+            "saucony": {
+                "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=SAUCONY"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+            },
+            "hoka": {
+                "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=HOKA"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{7}/?($|\?)", re.I),
+            },
         },
         "adapter": _sport1,
     },
@@ -212,6 +263,25 @@ STORES = {
             "adidas": {
                 "listing_urls": ["https://loplabbet.no/lopesko?Brand=ADIDAS"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
+            # probe_brands 5. juli: saucony 53 · nike ~75 · hoka 76 · puma 77.
+            # Kodeformater: Saucony \d{5} · Nike [a-z]{2}\d{4} · Hoka \d{7} ·
+            # Puma \d{6} (312060).
+            "saucony": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=SAUCONY"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{5}/?($|\?)", re.I),
+            },
+            "nike": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=NIKE"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
+            },
+            "hoka": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=HOKA"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{7}/?($|\?)", re.I),
+            },
+            "puma": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=PUMA"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-\d{6}/?($|\?)", re.I),
             },
         },
         "adapter": _loplabbet,
@@ -245,7 +315,12 @@ STORES = {
         "mode": "nopcommerce_pages",
         "categories": ["/joggesko-dame", "/joggesko-herre",
                        "/terrengsko-dame", "/terrengsko-herre"],
-        "brand_re": re.compile(r"/asics-[a-z0-9-]+", re.I),
+        # Merke velges via slug-prefiks i kategori-listingene (server-rendret).
+        # brukas_parser leser brand fra JSON-LD, så parseren er alt merke-agnostisk.
+        "by_brand": {
+            "asics":   {"brand_re": re.compile(r"/asics-[a-z0-9-]+", re.I)},
+            "saucony": {"brand_re": re.compile(r"/saucony-[a-z0-9-]+", re.I)},  # probe: 4 lenker
+        },
         "adapter": _brukas,
         "aggregate": brukas_parser.aggregate,
     },
@@ -259,7 +334,15 @@ STORES = {
         "base": "https://www.foss-sport.no",
         "mode": "foss_sitemap",
         "sitemap": "https://www.foss-sport.no/sitemap.xml",
-        "prod_re": re.compile(r"/asics/\d+/", re.I),   # Asics-produkt-URL-markør
+        # Produkt-URL-ene er /<merke>/<id>/… — merket velges via prod_re.
+        # foss_parser leser brand fra JSON-LD (generalisert 5. juli). Sitemap-
+        # dekning fra probe_brands: saucony 40 · kiprun 10 (+ new-balance 25,
+        # utenfor denne bølgen).
+        "by_brand": {
+            "asics":   {"prod_re": re.compile(r"/asics/\d+/", re.I)},
+            "saucony": {"prod_re": re.compile(r"/saucony/\d+/", re.I)},
+            "kiprun":  {"prod_re": re.compile(r"/kiprun/\d+/", re.I)},
+        },
         "adapter": _foss,
     },
 }
@@ -271,6 +354,10 @@ HREF_RE = re.compile(r'href="([^"#]+)"', re.I)
 
 # Liste hentes likt for alle modeller -> hent én gang per butikk per kjøring.
 _LIST_CACHE: dict[str, list[str]] = {}
+
+# Foss: rå sitemap-<loc>-er caches per sitemap-URL så flere merker (asics/
+# saucony/kiprun) deler ÉN sitemap-nedlasting per kjøring.
+_FOSS_LOC_CACHE: dict[str, list[str]] = {}
 
 # Minimal Jetshop-spørring: kategoriens produkter, offset-paginert.
 _JETSHOP_QUERY = (
@@ -588,15 +675,30 @@ def _nopcommerce_paths(cfg: dict) -> list[str]:
 
 
 def _foss_paths(cfg: dict) -> list[str]:
-    """Enumerer Asics-produkt-URL-er fra Foss' sitemap (/asics/<id>/…).
-    Sitemap-en kan være en indeks; vi følger .xml-barn med tak. Returnerer ALLE
-    Asics-produkter (også klær) — foss_parser dropper ikke-sko, så vi mister
-    aldri en sko pga. uventet slug. Server-rendret PDP, ingen AJAX-reversering."""
+    """Enumerer produkt-URL-er for ETT merke fra Foss' sitemap (/<merke>/<id>/…,
+    merket velges via cfg["prod_re"] fra by_brand). Sitemap-en kan være en
+    indeks; vi følger .xml-barn med tak. Returnerer ALLE merkets produkter
+    (også klær) — foss_parser dropper ikke-sko, så vi mister aldri en sko pga.
+    uventet slug. Server-rendret PDP, ingen AJAX-reversering.
+    Rå-<loc>-ene caches per sitemap så flere merker ikke re-henter XML-ene."""
     import urllib.parse
     base = cfg["base"]
     prod_re = cfg["prod_re"]
     loc_re = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
     headers = {"User-Agent": "Mozilla/5.0 (prislop)", "Accept-Language": "nb-NO"}
+
+    cached = _FOSS_LOC_CACHE.get(cfg["sitemap"])
+    if cached is not None:
+        out, seen = [], set()
+        for loc in cached:
+            if not prod_re.search(loc):
+                continue
+            full = urljoin(base, urllib.parse.urlparse(loc).path)
+            if full.startswith(base) and full not in seen:
+                seen.add(full)
+                out.append(full)
+        print(f"  [foss] sitemap (cache) -> {len(out)} produkt-URL-er (sko filtreres i parser)")
+        return out
 
     def fetch(url):
         try:
@@ -608,7 +710,7 @@ def _foss_paths(cfg: dict) -> list[str]:
             return ""
 
     queue, visited = [cfg["sitemap"]], 0
-    out, seen = [], set()
+    out, seen, all_locs = [], set(), []
     while queue and visited < 15:
         sm = queue.pop(0)
         visited += 1
@@ -617,6 +719,7 @@ def _foss_paths(cfg: dict) -> list[str]:
         if children:                       # sitemap-indeks -> følg barna
             queue.extend(children[:15])
             continue
+        all_locs.extend(locs)
         for loc in locs:
             if not prod_re.search(loc):
                 continue
@@ -625,7 +728,8 @@ def _foss_paths(cfg: dict) -> list[str]:
             if full.startswith(base) and full not in seen:
                 seen.add(full)
                 out.append(full)
-    print(f"  [foss] sitemap -> {len(out)} Asics-produkt-URL-er (sko filtreres i parser)")
+    _FOSS_LOC_CACHE[cfg["sitemap"]] = all_locs
+    print(f"  [foss] sitemap -> {len(out)} produkt-URL-er (sko filtreres i parser)")
     return out
 
 
@@ -634,9 +738,10 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
     b = (brand or "").strip().lower()
 
     # Flermerke: butikker med "by_brand" får merke-spesifikke felter lagt oppå
-    # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter…).
-    # Mangler merket i by_brand -> butikken fører/støtter det ikke -> [].
-    # Butikker UTEN by_brand er (ennå) merke-bundne til Asics (Brukås/Foss/Bull).
+    # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter,
+    # brand_re, prod_re…). Mangler merket i by_brand -> butikken fører/støtter
+    # det ikke -> []. Butikker UTEN by_brand er merke-bundne til Asics (nå kun
+    # Bull — trenger egen vendor-id-recon per merke).
     per = base_cfg.get("by_brand")
     if per is not None:
         if b not in per:
