@@ -561,7 +561,7 @@ function sizesHTML(pid, sizes){
     + '</div>'
     + '<form class="alertform" id="af-'+pid+'" autocomplete="off" onsubmit="return submitAlert(event,\''+pid+'\')">'
     +   '<input class="email" type="email" placeholder="din@epost.no" required aria-label="E-post for varsel" />'
-    +   '<input class="price" type="number" inputmode="numeric" placeholder="maks kr" aria-label="Maks pris" />'
+    +   '<input class="price" type="number" inputmode="numeric" placeholder="maks kr" required min="100" aria-label="Maks pris" />'
     +   '<button class="btn" type="submit">Send bekreftelse</button>'
     + '</form>'
     + '<div class="confirm" id="cf-'+pid+'"></div>'
@@ -608,8 +608,15 @@ async function submitAlert(ev, pid){
   ev.preventDefault();
   const form = el("af-"+pid), cf = el("cf-"+pid);
   const email = form.querySelector(".email").value.trim();
+  const maxPrice = parseInt(form.querySelector(".price").value, 10) || null;
+  const sizeBtn = document.querySelector("#sg-"+pid+" .chip.sel, .product .chip.sel");
+  const size = sizeBtn ? sizeBtn.dataset.size : null;
   cf.className = "confirm show"; cf.textContent = "Sender …";
   try{
+    // Husk intensjonen gjennom e-postrunden; skrives via create_alert
+    // når magic-linken lander (handleAuthCallback).
+    localStorage.setItem("prislop_pending_alert",
+      JSON.stringify({ pid, size, maxPrice, ts: Date.now() }));
     await sendMagicLink(email);
     form.classList.remove("show");
     cf.className = "confirm show";
@@ -635,8 +642,36 @@ async function sendMagicLink(email){
 
 function handleAuthCallback(){
   if(location.hash && location.hash.indexOf("access_token") !== -1){
+    const m = location.hash.match(/access_token=([^&]+)/);
     history.replaceState(null, "", location.pathname + location.search);
-    showToast("E-posten din er bekreftet. Vi sier fra når prisen faller.");
+    activatePendingAlert(m ? m[1] : null);
+  }
+}
+
+async function activatePendingAlert(token){
+  let pending = null;
+  try{ pending = JSON.parse(localStorage.getItem("prislop_pending_alert")||"null"); }catch(e){}
+  localStorage.removeItem("prislop_pending_alert");
+  // intensjon eldre enn 24t regnes som utgått
+  if(!token || !pending || !pending.pid || (Date.now()-(pending.ts||0)) > 864e5){
+    showToast("E-posten din er bekreftet.");
+    return;
+  }
+  try{
+    const r = await fetch(SB_URL + "/rest/v1/rpc/create_alert", {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: "Bearer " + token,
+                 "Content-Type": "application/json" },
+      body: JSON.stringify({ p_product_id: pending.pid,
+                             p_size_label: pending.size,
+                             p_max_price: pending.maxPrice })
+    });
+    if(!r.ok) throw new Error("rpc " + r.status);
+    showToast("Varselet er aktivert" + (pending.size ? " for str. " + pending.size : "")
+      + (pending.maxPrice ? " under " + pending.maxPrice + " kr" : "")
+      + ". Vi sier fra når prisen faller.");
+  }catch(e){
+    showToast("Bekreftet — men varselet ble ikke lagret. Prøv «Følg pris» på nytt.");
   }
 }
 function showToast(msg){
