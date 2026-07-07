@@ -121,10 +121,17 @@ def upsert_product(cur, rec: dict) -> str:
     )
     return cur.fetchone()[0]
 
-def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
-    """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> ny.
+def get_or_create_variant(cur, product_id: str, rec: dict, store_id: int | None = None) -> str:
+    """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> butikk-SKU -> ny.
     Butikkens eget fargenavn lever på tilbudet (offers.store_color), ikke her,
-    slik at samme sko ikke splittes fordi butikkene navngir fargen ulikt."""
+    slik at samme sko ikke splittes fordi butikkene navngir fargen ulikt.
+
+    SKU-steget (2.5, lagt til 6. juli sent): XXL leverer ofte hverken
+    produsentkode eller EAN-er i skrapingen. Da falt vi rett i «ny variant»-
+    grenen ved HVER harvest og skapte en ny variant+offer for samme artikkel
+    hver 6. time (Zoom Fly 6 herre: 124 tilbudsrader for 3 reelle farger).
+    Samme (butikk, artikkelnummer, produkt) er per definisjon samme fargevei,
+    så vi gjenbruker varianten det eksisterende tilbudet peker på."""
     code = rec.get("manufacturer_code")
     eans = [s.get("ean") for s in rec.get("sizes", []) if s.get("ean")]
     img = rec.get("image_url") if STORE_SCRAPED_IMAGES else None
@@ -157,6 +164,30 @@ def get_or_create_variant(cur, product_id: str, rec: dict) -> str:
         if row:
             vid = row[0]
             if code:   # arve produsentkode hvis vi nå kjenner den og varianten mangler den
+                cur.execute(
+                    "update prislop.variants set manufacturer_code = %s where id = %s and manufacturer_code is null",
+                    (code, vid),
+                )
+            cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
+                        (img, vid))
+            return vid
+
+    # 2.5) match på butikkens artikkelnummer — fanger butikker uten kode/EAN (XXL)
+    sku = rec.get("store_sku")
+    if sku and store_id is not None:
+        cur.execute(
+            """
+            select o.variant_id from prislop.offers o
+            join prislop.variants v on v.id = o.variant_id
+            where o.store_id = %s and o.store_sku = %s and v.product_id = %s
+            limit 1
+            """,
+            (store_id, sku, product_id),
+        )
+        row = cur.fetchone()
+        if row:
+            vid = row[0]
+            if code:
                 cur.execute(
                     "update prislop.variants set manufacturer_code = %s where id = %s and manufacturer_code is null",
                     (code, vid),
@@ -321,7 +352,7 @@ def load(offers: list[dict]) -> dict:
                     if slug not in store_ids:
                         store_ids[slug] = upsert_store(cur, rec["store"])
                     product_id = upsert_product(cur, rec)
-                    variant_id = get_or_create_variant(cur, product_id, rec)
+                    variant_id = get_or_create_variant(cur, product_id, rec, store_ids[slug])
                     offer_id, accepted = upsert_offer(cur, store_ids[slug], variant_id, rec, run_ts)
                     if not accepted:
                         continue             # dyrere duplikat-artikkel i samme kjøring
