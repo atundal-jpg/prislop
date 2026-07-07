@@ -86,6 +86,14 @@ def send_email(api_key: str, to: str, subject: str, html: str) -> bool:
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return 200 <= resp.status < 300
+    except urllib.error.HTTPError as e:
+        # 7. juli natt: bare "HTTP Error 403: Forbidden" ble logget her,
+        # uten Resends faktiske feiltekst (f.eks. "API key is invalid" vs.
+        # "You can only send testing emails to your own email address") —
+        # umulig å diagnostisere uten å lese response-body.
+        body = e.read().decode(errors="replace")
+        print(f"  [alerts] sendefeil til {to}: HTTP {e.code}: {body}")
+        return False
     except Exception as e:  # aldri knekk pipelinen på e-post
         print(f"  [alerts] sendefeil til {to}: {e}")
         return False
