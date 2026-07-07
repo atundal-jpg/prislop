@@ -81,7 +81,12 @@ def send_email(api_key: str, to: str, subject: str, html: str) -> bool:
         data=json.dumps({"from": FROM, "to": [to],
                          "subject": subject, "html": html}).encode(),
         headers={"Authorization": f"Bearer {api_key}",
-                 "Content-Type": "application/json"},
+                 "Content-Type": "application/json",
+                 # 7. juli, morgen: urllibs standard User-Agent
+                 # ("Python-urllib/3.x") trigget Cloudflares bot-filter foran
+                 # Resend-APIet -> 403 "error code: 1010", uavhengig av at
+                 # nøkkelen var gyldig. En vanlig UA-streng holder.
+                 "User-Agent": "Mozilla/5.0 (compatible; PrislopAlerts/1.0)"},
         method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
