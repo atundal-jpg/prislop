@@ -72,9 +72,38 @@ def _strip_lead_tokens(toks: list[str]) -> list[str]:
 # «Jakob Ingebrigtsen»->«Ji» (Nike-signaturmodeller).
 _TRAIL_GENDER = {"m", "w", "u", "wmns"}
 _TRAIL_NOISE = {"løpesko", "løpeesko", "terrengløpesko", "joggesko",
-                "piggsko", "terreng"}
+                "piggsko", "terreng", "running", "shoes"}
 _CUT_FROM = {"men's", "mens", "women's", "womens"}
 _TOKEN_MAP = {"bred": "wide", "ji": "jakob ingebrigtsen"}
+
+# Trailing EDISJONS-haler (DQ-runde 3, 7. juli): signatur-, maraton- og
+# kolleksjonsnavn som er FARGEVEI-nivå, ikke modellidentitet — «Zoom Fly 6
+# Jakob Ingebrigtsen» og «Zoom Fly 6 Special Edition» er samme sko som
+# «Zoom Fly 6». Strippes KUN fra halen, og aldri slik at navnet tømmes.
+# NB: reelle produktvarianter (GTX, Wide, TR, ATC, Mid, WTR, ATR, Elite,
+# versjonsnumre) skal IKKE hit — de er egne produkter med egen prishistorikk.
+# «lite show» dekker «Lite-Show» (norm_model gjør bindestrek om til mellomrom);
+# «fk prm» må stå som egen frase så «Vaporfly Next% 3 Fk Prm» går helt til basen.
+_TRAIL_EDITIONS = [
+    "jakob ingebrigtsen", "faith kipyegon", "special edition",
+    "puma x hyrox", "psychedelic rush", "track and field",
+    "lite show", "fk prm", "premium", "prm", "fp", "proto",
+    "blueprint", "electric", "paris", "tokyo", "nyc", "digitokyo",
+    "fire", "fade",
+]
+
+
+def _strip_edition_tail(s: str) -> str:
+    """Fjern edisjonshaler fra enden av en normalisert (lowercase)
+    modellstreng, iterativt, men aldri hele navnet."""
+    changed = True
+    while changed:
+        changed = False
+        for ph in _TRAIL_EDITIONS:
+            if s != ph and s.endswith(" " + ph):
+                s = s[: -(len(ph) + 1)].rstrip()
+                changed = True
+    return s
 
 
 def _clean_tail_tokens(toks: list[str]) -> list[str]:
@@ -120,6 +149,8 @@ def norm_model(model: str) -> str:
     toks = _strip_lead_tokens(m.split(" "))
     toks = [_TOKEN_MAP.get(t, t) for t in toks]
     toks = _clean_tail_tokens(" ".join(toks).split(" "))
+    if toks:
+        toks = _strip_edition_tail(" ".join(toks)).split(" ")
     # "nimbus 27" -> "gel-nimbus 27"
     if toks and toks[0] in _GEL_LINES:
         toks[0] = "gel-" + toks[0]
@@ -191,6 +222,22 @@ def _clean_tail_display(s: str) -> str:
     return " ".join(words[:len(cleaned)]) if cleaned else s
 
 
+def _strip_edition_display(s: str) -> str:
+    """Samme edisjonsstrip som match-nøkkelen, men case-bevarende og med
+    bindestrek-varianter («Lite-Show») for visningsnavnet."""
+    phrases = _TRAIL_EDITIONS + ["lite-show"]
+    changed = True
+    while changed:
+        changed = False
+        low = s.lower()
+        for ph in phrases:
+            if low != ph and low.endswith(" " + ph):
+                s = s[: -(len(ph) + 1)].rstrip()
+                changed = True
+                break  # low er utdatert etter endring — regn ut på nytt
+    return s
+
+
 def canonical_model(model: str) -> str:
     """Pent visningsnavn: kjønn/farge/merke-/markedsføringsprefiks og
     beskrivelses-haler strippet, Gore-Tex/G-TX -> GTX, riktig casing."""
@@ -199,6 +246,7 @@ def canonical_model(model: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     cleaned = _strip_lead_display(cleaned)
     cleaned = _clean_tail_display(cleaned)
+    cleaned = _strip_edition_display(cleaned)
     s = re.sub(r"\bgore[\s-]?tex\b", "GTX", cleaned, flags=re.I)
     s = re.sub(r"\bg-tx\b", "GTX", s, flags=re.I)
     for sp, joined in _COMPOUNDS:                       # "Fuji Speed" -> "FujiSpeed"
