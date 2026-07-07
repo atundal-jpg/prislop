@@ -82,27 +82,40 @@ _TOKEN_MAP = {"bred": "wide", "ji": "jakob ingebrigtsen"}
 # «Zoom Fly 6». Strippes KUN fra halen, og aldri slik at navnet tømmes.
 # NB: reelle produktvarianter (GTX, Wide, TR, ATC, Mid, WTR, ATR, Elite,
 # versjonsnumre) skal IKKE hit — de er egne produkter med egen prishistorikk.
+# To nivåer, fordi noen haler er TVETYDIGE: «Pegasus Premium», «Vomero
+# Premium» og «MetaSpeed Sky Tokyo» er EKTE egne modeller, mens «Pegasus 41
+# Prm» og «Gel-Kayano 32 Tokyo» er edisjoner. Skillet i praksis: edisjoner
+# kommer etter et versjonsNUMMER — derfor strippes de tvetydige bare når
+# ordet foran inneholder et siffer.
 # «lite show» dekker «Lite-Show» (norm_model gjør bindestrek om til mellomrom);
 # «fk prm» må stå som egen frase så «Vaporfly Next% 3 Fk Prm» går helt til basen.
-_TRAIL_EDITIONS = [
+_EDITION_ALWAYS = [
     "jakob ingebrigtsen", "faith kipyegon", "special edition",
-    "puma x hyrox", "psychedelic rush", "track and field",
-    "lite show", "fk prm", "premium", "prm", "fp", "proto",
-    "blueprint", "electric", "paris", "tokyo", "nyc", "digitokyo",
-    "fire", "fade",
+    "puma x hyrox", "psychedelic rush", "track and field", "fp",
+]
+_EDITION_AFTER_NUM = [
+    "lite show", "fk prm", "premium", "prm", "proto", "blueprint",
+    "electric", "paris", "tokyo", "nyc", "digitokyo", "fire", "fade",
 ]
 
 
 def _strip_edition_tail(s: str) -> str:
     """Fjern edisjonshaler fra enden av en normalisert (lowercase)
-    modellstreng, iterativt, men aldri hele navnet."""
+    modellstreng, iterativt, men aldri hele navnet. Tvetydige haler
+    fjernes bare etter et token som inneholder siffer."""
     changed = True
     while changed:
         changed = False
-        for ph in _TRAIL_EDITIONS:
+        for ph in _EDITION_ALWAYS:
             if s != ph and s.endswith(" " + ph):
                 s = s[: -(len(ph) + 1)].rstrip()
                 changed = True
+        for ph in _EDITION_AFTER_NUM:
+            if s != ph and s.endswith(" " + ph):
+                rest = s[: -(len(ph) + 1)].rstrip()
+                if rest and any(c.isdigit() for c in rest.split(" ")[-1]):
+                    s = rest
+                    changed = True
     return s
 
 
@@ -225,16 +238,25 @@ def _clean_tail_display(s: str) -> str:
 def _strip_edition_display(s: str) -> str:
     """Samme edisjonsstrip som match-nøkkelen, men case-bevarende og med
     bindestrek-varianter («Lite-Show») for visningsnavnet."""
-    phrases = _TRAIL_EDITIONS + ["lite-show"]
+    after_num = _EDITION_AFTER_NUM + ["lite-show"]
     changed = True
     while changed:
         changed = False
         low = s.lower()
-        for ph in phrases:
+        for ph in _EDITION_ALWAYS:
             if low != ph and low.endswith(" " + ph):
                 s = s[: -(len(ph) + 1)].rstrip()
                 changed = True
                 break  # low er utdatert etter endring — regn ut på nytt
+        if changed:
+            continue
+        for ph in after_num:
+            if low != ph and low.endswith(" " + ph):
+                rest = s[: -(len(ph) + 1)].rstrip()
+                if rest and any(c.isdigit() for c in rest.split(" ")[-1]):
+                    s = rest
+                    changed = True
+                    break
     return s
 
 
