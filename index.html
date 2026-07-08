@@ -567,7 +567,7 @@ function sparkHTML(series){
   return ''
     + '<div class="spark">'
     +   '<div class="spark-head">'
-    +     '<span class="spark-ttl">Prisløp · laveste pris per dag</span>'
+    +     '<span class="spark-ttl">Prisløp · laveste per dag, alle størrelser</span>'
     +     '<span class="spark-delta '+cls+'">'+esc(deltaTxt)+' <span style="opacity:.7">14 d</span></span>'
     +   '</div>'
     +   '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'
@@ -579,6 +579,8 @@ function sparkHTML(series){
     +   '<p class="spark-foot">'
     +     'Lavest i perioden: '+nok(lo)+' kr'
     +     (isLowNow ? ' · <strong>på laveste nå</strong>' : '')
+    +     '<br><span style="opacity:.75">Laveste pris på tvers av farger og størrelser'
+    +     ' — velg størrelse under for å se hva som faktisk er på lager.</span>'
     +   '</p>'
     + '</div>';
 }
