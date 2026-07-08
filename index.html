@@ -301,6 +301,17 @@
       </label>
       <select class="sel" id="f-brand" aria-label="Filtrer på merke"><option value="">Alle merker</option></select>
       <select class="sel" id="f-gender" aria-label="Filtrer på kjønn"><option value="">Alle kjønn</option></select>
+      <select class="sel" id="f-kat" aria-label="Filtrer på kategori">
+        <option value="">Alle kategorier</option>
+        <option value="konkurranse">Konkurransesko</option>
+        <option value="tempo">Tempo &amp; supertrainer</option>
+        <option value="daily">Daily trainer</option>
+        <option value="demping">Maks demping &amp; restitusjon</option>
+        <option value="stabilitet">Stabilitetssko</option>
+        <option value="terreng">Terrengsko</option>
+        <option value="mosjon">Mosjon &amp; hverdag</option>
+        <option value="bane">Bane &amp; pigger</option>
+      </select>
       <select class="sel" id="f-size" aria-label="Filtrer på størrelse"><option value="">Alle størrelser</option></select>
       <select class="sel" id="f-sort" aria-label="Sortering">
         <option value="rank">Anbefalt</option>
@@ -412,7 +423,20 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
-const filters = { q:"", brand:"", gender:"", size:"", sort:"rank" };
+const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank" };
+
+// Spor 4: brukskategorier (subcategory i v_prislop_products). Etikettene
+// gjenbrukes i kort-badgen og som JSON-LD-category.
+const KAT_LABELS = {
+  konkurranse: "Konkurransesko",
+  tempo:       "Tempo & supertrainer",
+  daily:       "Daily trainer",
+  demping:     "Maks demping & restitusjon",
+  stabilitet:  "Stabilitetssko",
+  terreng:     "Terrengsko",
+  mosjon:      "Mosjon & hverdag",
+  bane:        "Bane & pigger"
+};
 
 const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
   + '<path d="M5 41c0-3 2-5 6-6 6-1 9-4 13-9 3-4 6-6 9-5 2 1 2 3 1 6 4-1 9 0 15 3 6 3 9 6 9 10 0 3-2 4-6 4H9c-3 0-4-1-4-3z" fill="#136E68"/>'
@@ -446,7 +470,7 @@ function productJsonLd(pid){
     "name": p.brand + " " + p.model,
     "brand": { "@type": "Brand", "name": p.brand },
     "url": url,
-    "category": "Løpesko"
+    "category": p.subcategory ? ("Løpesko > " + (KAT_LABELS[p.subcategory] || p.subcategory)) : "Løpesko"
   };
   const offers = offerCache[pid];
   if(offers && offers.length){
@@ -644,6 +668,7 @@ function bindControls(){
   el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); resetPaging(); ensureHomeUrl(); render(); }, 140); });
   el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
   el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
+  el("f-kat").addEventListener("change", e => { filters.kat = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
   el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
   el("f-size").addEventListener("change", async e => {
     filters.size = e.target.value;
@@ -659,6 +684,7 @@ function currentList(){
   let list = PRODUCTS.slice();
   if(filters.brand)  list = list.filter(p => p.brand === filters.brand);
   if(filters.gender) list = list.filter(p => p.gender === filters.gender);
+  if(filters.kat)    list = list.filter(p => p.subcategory === filters.kat);
   if(filters.q){
     list = list.filter(p => ((p.brand||"")+" "+(p.model||"")).toLowerCase().includes(filters.q));
   }
@@ -706,7 +732,8 @@ function render(){
 }
 
 function cardHTML(p){
-  const sub = [cap(p.gender), plur(p.n_colorways,"farge","farger"),
+  const sub = [KAT_LABELS[p.subcategory] || null,
+               cap(p.gender), plur(p.n_colorways,"farge","farger"),
                (p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
                .filter(Boolean).join(" · ");
   return ''
@@ -1008,6 +1035,7 @@ function showToast(msg){
 function resetFilters(){
   filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
+  el("f-kat").value=""; filters.kat="";
   resetPaging();
   ensureHomeUrl();
   render();
