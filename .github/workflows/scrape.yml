@@ -9,6 +9,9 @@ concurrency:
   group: scrape-prislop
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   harvest:
     runs-on: ubuntu-latest
@@ -51,6 +54,25 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_FROM: ${{ secrets.ALERT_FROM }}
         run: python send_alerts.py
+
+      - name: Generer sitemap (SEO fase 2, spor 3)
+        working-directory: scraper
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python generate_sitemap.py ../sitemap.xml
+
+      - name: Commit sitemap ved endring
+        run: |
+          if git diff --quiet -- sitemap.xml; then
+            echo "Sitemap uendret — ingen commit."
+            exit 0
+          fi
+          git config user.name "prislop-actions"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sitemap.xml
+          git commit -m "sitemap: oppdater produkt-URL-er [skip ci]"
+          git pull --rebase origin main
+          git push origin main
 
       - name: Dødmannsping — vellykket kjøring
         if: success()
