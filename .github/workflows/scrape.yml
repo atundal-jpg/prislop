@@ -57,6 +57,12 @@ jobs:
           ALERT_FROM: ${{ secrets.ALERT_FROM }}
         run: python send_alerts.py
 
+      - name: Klassifiser kategorier (spor 4)
+        working-directory: scraper
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python classify_categories.py
+
       - name: Generer sitemap (SEO fase 2, spor 3)
         working-directory: scraper
         env:
