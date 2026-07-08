@@ -49,6 +49,21 @@
   .chart .ring{fill:none;stroke:var(--honey);stroke-width:2;opacity:.5}
   .chart .mark{fill:var(--honey)}
   @keyframes draw{from{stroke-dashoffset:1500}to{stroke-dashoffset:0}}
+  /* prishistorikk-sparkline i ekspandert kort */
+  .spark{padding:20px 24px 6px;border-top:1px solid var(--line);background:#fff}
+  .spark .spark-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
+  .spark .spark-ttl{font-size:13px;color:var(--muted);letter-spacing:.02em}
+  .spark .spark-delta{font-family:"Space Mono",monospace;font-size:13px;font-weight:500}
+  .spark .spark-delta.down{color:var(--petrol)}
+  .spark .spark-delta.up{color:var(--honey)}
+  .spark .spark-delta.flat{color:var(--muted)}
+  .spark svg{width:100%;height:56px;display:block;overflow:visible}
+  .spark .s-area{fill:var(--petrol-soft);opacity:.5}
+  .spark .s-line{stroke:var(--petrol);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .spark .s-lo{fill:var(--honey)}
+  .spark .s-lo-ring{fill:none;stroke:var(--honey);stroke-width:1.6;opacity:.55}
+  .spark .spark-foot{font-size:12px;color:var(--muted);margin:8px 0 0}
+  .spark .spark-thin{padding:18px 24px;background:#fff;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
   .hero .wrap{position:relative;padding:84px 24px 76px}
   .hero h1{font-size:clamp(40px,7vw,76px)}
   .hero h1 em{font-style:normal;color:var(--honey)}
@@ -347,6 +362,7 @@ async function api(qs){
 async function fetchProducts(){ return api("v_prislop_products?select=*&order=brand.asc,model.asc"); }
 async function fetchOffers(pid){ return api("v_prislop_offers?product_id=eq."+pid+"&order=price.asc"); }
 async function fetchSizes(pid){ return api("v_prislop_sizes?product_id=eq."+pid); }
+async function fetchSeries(pid){ return api("v_prislop_price_series?product_id=eq."+pid+"&order=day.asc"); }
 async function productIdsWithSize(size){
   const rows = await api("v_prislop_sizes?select=product_id&in_stock=is.true&size=eq."+encodeURIComponent(size));
   return new Set(rows.map(r => r.product_id));
@@ -354,7 +370,7 @@ async function productIdsWithSize(size){
 
 /* ---- state ---- */
 let PRODUCTS = [];
-const offerCache = {}, sizeCache = {}, sizeFilterCache = {};
+const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
 const filters = { q:"", brand:"", gender:"", size:"", sort:"rank" };
 
 const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
@@ -494,11 +510,12 @@ async function toggle(btn){
     const body = el("body-"+pid);
     body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">Henter butikker og størrelser …</span></div>';
     try{
-      const [offers, sizes] = await Promise.all([
-        offerCache[pid] || (offerCache[pid] = await fetchOffers(pid)),
-        sizeCache[pid]  || (sizeCache[pid]  = await fetchSizes(pid)),
+      const [offers, sizes, series] = await Promise.all([
+        offerCache[pid]  || (offerCache[pid]  = await fetchOffers(pid)),
+        sizeCache[pid]   || (sizeCache[pid]   = await fetchSizes(pid)),
+        seriesCache[pid] || (seriesCache[pid] = await fetchSeries(pid)),
       ]);
-      body.innerHTML = storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
+      body.innerHTML = sparkHTML(series) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
     }catch(e){
       body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
         + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
@@ -509,6 +526,63 @@ async function toggle(btn){
 
 /* selSize (kanonisk) valgfri: re-badger tilbudene for akkurat den størrelsen.
    Uten valgt størrelse = colorway-nivå (som før). */
+/* Prishistorikk-sparkline. Rå daglig min (fra v_prislop_price_series).
+   Viser bare graf når det finnes nok datapunkter til å være meningsfullt —
+   ellers en «samler historikk»-placeholder. Datatettheten øker etter hvert
+   som harvestene blir stabile, så tynne produkter tenner av seg selv. */
+var SPARK_MIN_POINTS = 4;
+function sparkHTML(series){
+  if(!series || series.length < SPARK_MIN_POINTS){
+    return '<div class="spark-thin">Samler prishistorikk … kurven vises når vi har flere dager med data.</div>';
+  }
+  var pts = series.map(function(r){ return { d:r.day, p:Number(r.min_price) }; })
+                  .filter(function(r){ return isFinite(r.p) && r.p>0; });
+  if(pts.length < SPARK_MIN_POINTS){
+    return '<div class="spark-thin">Samler prishistorikk … kurven vises når vi har flere dager med data.</div>';
+  }
+  var W=560, H=56, n=pts.length;
+  var prices = pts.map(function(r){ return r.p; });
+  var lo=Math.min.apply(null,prices), hi=Math.max.apply(null,prices);
+  var span=(hi-lo)||1;
+  var x=function(i){ return n===1?0:(i/(n-1))*W; };
+  var y=function(p){ return H-4 - ((p-lo)/span)*(H-8); };
+  var line="", area="M0,"+H.toFixed(1);
+  pts.forEach(function(r,i){
+    var px=x(i).toFixed(1), py=y(r.p).toFixed(1);
+    line += (i===0?"M":"L")+px+","+py+" ";
+    area += "L"+px+","+py+" ";
+  });
+  area += "L"+W.toFixed(1)+","+H.toFixed(1)+" Z";
+  // laveste punkt (siste forekomst av min)
+  var loIdx=0; for(var i=1;i<pts.length;i++){ if(pts[i].p<=pts[loIdx].p) loIdx=i; }
+  var loX=x(loIdx).toFixed(1), loY=y(pts[loIdx].p).toFixed(1);
+  // delta siste 14 dager (eldste innenfor vindu vs nyeste)
+  var last=pts[pts.length-1], cutoff=new Date(last.d); cutoff.setDate(cutoff.getDate()-14);
+  var base=pts[0];
+  for(var j=0;j<pts.length;j++){ if(new Date(pts[j].d) >= cutoff){ base=pts[j]; break; } }
+  var pct = base.p ? Math.round(((last.p-base.p)/base.p)*100) : 0;
+  var cls = pct< -1 ? "down" : (pct> 1 ? "up" : "flat");
+  var deltaTxt = pct=== 0 ? "uendret" : (pct>0?"+":"")+pct+" %";
+  var isLowNow = last.p <= lo + 0.5;
+  return ''
+    + '<div class="spark">'
+    +   '<div class="spark-head">'
+    +     '<span class="spark-ttl">Prisløp · laveste pris per dag</span>'
+    +     '<span class="spark-delta '+cls+'">'+esc(deltaTxt)+' <span style="opacity:.7">14 d</span></span>'
+    +   '</div>'
+    +   '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'
+    +     '<path class="s-area" d="'+area+'"/>'
+    +     '<path class="s-line" d="'+line.trim()+'"/>'
+    +     '<circle class="s-lo-ring" cx="'+loX+'" cy="'+loY+'" r="4.5"/>'
+    +     '<circle class="s-lo" cx="'+loX+'" cy="'+loY+'" r="2.6"/>'
+    +   '</svg>'
+    +   '<p class="spark-foot">'
+    +     'Lavest i perioden: '+nok(lo)+' kr'
+    +     (isLowNow ? ' · <strong>på laveste nå</strong>' : '')
+    +   '</p>'
+    + '</div>';
+}
+
 function storesHTML(offers, pid, selSize){
   if(!offers || !offers.length) return '';
   const idx = selSize ? sizeIndexFor(pid) : null;
