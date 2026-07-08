@@ -15,7 +15,9 @@ permissions:
 jobs:
   harvest:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    env:
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -85,8 +87,8 @@ jobs:
           fi
           curl -fsS -m 10 --retry 3 "$HEALTHCHECKS_PING_URL"
 
-      - name: Dødmannsping — feilet kjøring
-        if: failure()
+      - name: Dødmannsping — feilet eller avbrutt kjøring
+        if: failure() || cancelled()
         env:
           HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
         run: |
