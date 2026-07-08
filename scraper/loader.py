@@ -35,6 +35,79 @@ STORE_SCRAPED_IMAGES = False
 
 
 # ---------------------------------------------------------------------------
+#  RunCache — prefetch av oppslagsdata (ytelse, 8. juli)
+#
+#  Bakgrunn: lastingen tok 49 min (36 500 størrelser, ~2 800 tilbud) fordi hver
+#  record gjorde 5–9 sekvensielle SELECT/UPDATE-rundturer mot Supabase fra
+#  GitHub-runneren (~100–150 ms latens per rundtur). To harvests timet ut på 45
+#  min samme dag. Fiksen: hent oppslagsdataene i 4–5 store SELECT-er per load()
+#  og gjør all MATCHING i minnet. SKRIVINGENE er uendret, setning for setning —
+#  all forretningslogikk (match_key-merge, selvhelbredende fallback, EAN-bro,
+#  SKU-bro, billigst-duplikat, same-run-history-erstatning) er bevart og
+#  differensialtestet mot den gamle loaderen på identisk scenario.
+#
+#  Synlighetsregel: cachen speiler nøyaktig hva de gamle SELECT-ene ville sett —
+#  prefetch ser alt committet fra tidligere butikk-loads (kryss-butikk-EAN-bro),
+#  og alle skriv i inneværende transaksjon legges inn i cachen umiddelbart
+#  (innen-transaksjon-synlighet, f.eks. XXLs duplikat-artikler).
+# ---------------------------------------------------------------------------
+class RunCache:
+    def __init__(self, cur):
+        # produkter: id + felter vi trenger for merge-beslutningene
+        cur.execute("select id, match_key, brand, model, gender, product_line, category "
+                    "from prislop.products")
+        self.prod_by_match: dict[str, str] = {}
+        self.prod_by_bmg: dict[tuple, str] = {}
+        self.prod_state: dict[str, tuple] = {}       # id -> (line, category)
+        for pid, mk, b, m, g, line, cat in cur.fetchall():
+            if mk:
+                self.prod_by_match[mk] = pid
+            self.prod_by_bmg[(b, m, g)] = pid
+            self.prod_state[pid] = (line, cat)
+
+        # varianter: kode-kart + kodestatus (for arv av produsentkode)
+        cur.execute("select id, product_id, manufacturer_code from prislop.variants")
+        self.var_by_code: dict[tuple, str] = {}      # (product_id, code) -> variant_id
+        self.var_code: dict[str, str | None] = {}    # variant_id -> code
+        self.var_product: dict[str, str] = {}        # variant_id -> product_id
+        for vid, pid, code in cur.fetchall():
+            if code:
+                self.var_by_code[(pid, code)] = vid
+            self.var_code[vid] = code
+            self.var_product[vid] = pid
+
+        # EAN-bro: (product_id, ean) -> variant_id  (speiler den gamle join-spørringen)
+        cur.execute("""
+            select v.product_id, os.ean, v.id
+            from prislop.variants v
+            join prislop.offers o on o.variant_id = v.id
+            join prislop.offer_sizes os on os.offer_id = o.id
+            where os.ean is not null
+        """)
+        self.var_by_ean: dict[tuple, str] = {}
+        for pid, ean, vid in cur.fetchall():
+            self.var_by_ean.setdefault((pid, ean), vid)
+
+        # per-butikk (lazy): SKU-bro og eksisterende tilbud
+        self._sku: dict[int, dict] = {}
+        self._offers: dict[int, dict] = {}
+
+    def store_maps(self, cur, store_id: int):
+        if store_id not in self._sku:
+            cur.execute("""
+                select o.store_sku, v.product_id, o.variant_id
+                from prislop.offers o join prislop.variants v on v.id = o.variant_id
+                where o.store_id = %s and o.store_sku is not null
+            """, (store_id,))
+            self._sku[store_id] = {(sku, pid): vid for sku, pid, vid in cur.fetchall()}
+            cur.execute("select variant_id, id, current_price, last_seen_at "
+                        "from prislop.offers where store_id = %s", (store_id,))
+            self._offers[store_id] = {vid: [oid, price, seen]
+                                      for vid, oid, price, seen in cur.fetchall()}
+        return self._sku[store_id], self._offers[store_id]
+
+
+# ---------------------------------------------------------------------------
 #  Tilkobling
 # ---------------------------------------------------------------------------
 def get_conn():
@@ -65,7 +138,7 @@ def upsert_store(cur, store: dict) -> int:
     return cur.fetchone()[0]
 
 
-def upsert_product(cur, rec: dict) -> str:
+def upsert_product(cur, rec: dict, cache: RunCache) -> str:
     # Rens modellnavnet: trekk ut kjønn som har lekket inn i navnet (overstyrer
     # da butikkens kjønnsfelt), og lag et pent visningsnavn. Match-nøkkelen
     # bygges på det RENSEDE navnet + korrigert kjønn, så samme sko forenes
@@ -79,17 +152,25 @@ def upsert_product(cur, rec: dict) -> str:
     line = rec.get("product_line")
     category = rec.get("category", "running")
 
+    def _apply_state(pid):
+        """Speil den gamle ubetingede UPDATE-en, men hopp over rundturen når
+        den beviselig er en no-op (line=coalesce(NULL,·) og category uendret)."""
+        old_line, old_cat = cache.prod_state.get(pid, (None, None))
+        new_line = line if line is not None else old_line
+        if (new_line, category) != (old_line, old_cat):
+            cur.execute(
+                "update prislop.products set product_line = coalesce(%s, product_line), "
+                "category = %s where id = %s",
+                (line, category, pid),
+            )
+        cache.prod_state[pid] = (new_line, category)
+
     # 1) Autoritativ merge på match_key — forener samme sko på tvers av butikker,
     #    også når visningsnavnet skrives ulikt ("Nimbus 28" vs "Gel-Nimbus 28").
-    cur.execute("select id from prislop.products where match_key = %s", (match_key,))
-    row = cur.fetchone()
-    if row:
-        cur.execute(
-            "update prislop.products set product_line = coalesce(%s, product_line), "
-            "category = %s where id = %s",
-            (line, category, row[0]),
-        )
-        return row[0]
+    pid = cache.prod_by_match.get(match_key)
+    if pid:
+        _apply_state(pid)
+        return pid
 
     # 2) Fall tilbake på den harde unik-nøkkelen (brand, model, gender). Fanger
     #    tilfeller der canonical_model (visningsnavn) og norm_model (match_key) er
@@ -97,18 +178,17 @@ def upsert_product(cur, rec: dict) -> str:
     #    INSERT ville krasjet på unik-constrainten og veltet HELE butikkens lasting.
     #    Vi gjenbruker raden og løfter den til den ferske, kanoniske match_key-en
     #    (selvhelbredende — nøkkelen er ledig siden steg 1 ikke fant den).
-    cur.execute(
-        "select id from prislop.products where brand = %s and model = %s and gender = %s",
-        (brand, display_model, gender),
-    )
-    row = cur.fetchone()
-    if row:
+    pid = cache.prod_by_bmg.get((brand, display_model, gender))
+    if pid:
         cur.execute(
             "update prislop.products set match_key = %s, "
             "product_line = coalesce(%s, product_line), category = %s where id = %s",
-            (match_key, line, category, row[0]),
+            (match_key, line, category, pid),
         )
-        return row[0]
+        old_line, _ = cache.prod_state.get(pid, (None, None))
+        cache.prod_by_match[match_key] = pid
+        cache.prod_state[pid] = (line if line is not None else old_line, category)
+        return pid
 
     # 3) Nytt produkt.
     cur.execute(
@@ -119,9 +199,14 @@ def upsert_product(cur, rec: dict) -> str:
         """,
         (brand, display_model, gender, line, category, match_key),
     )
-    return cur.fetchone()[0]
+    pid = cur.fetchone()[0]
+    cache.prod_by_match[match_key] = pid
+    cache.prod_by_bmg[(brand, display_model, gender)] = pid
+    cache.prod_state[pid] = (line, category)
+    return pid
 
-def get_or_create_variant(cur, product_id: str, rec: dict, store_id: int | None = None) -> str:
+def get_or_create_variant(cur, product_id: str, rec: dict, cache: RunCache,
+                          store_id: int | None = None) -> str:
     """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> butikk-SKU -> ny.
     Butikkens eget fargenavn lever på tilbudet (offers.store_color), ikke her,
     slik at samme sko ikke splittes fordi butikkene navngir fargen ulikt.
@@ -131,69 +216,61 @@ def get_or_create_variant(cur, product_id: str, rec: dict, store_id: int | None 
     grenen ved HVER harvest og skapte en ny variant+offer for samme artikkel
     hver 6. time (Zoom Fly 6 herre: 124 tilbudsrader for 3 reelle farger).
     Samme (butikk, artikkelnummer, produkt) er per definisjon samme fargevei,
-    så vi gjenbruker varianten det eksisterende tilbudet peker på."""
+    så vi gjenbruker varianten det eksisterende tilbudet peker på.
+
+    Ytelses-notat (8. juli): alle tre oppslagene går mot RunCache i stedet for
+    SELECT-er. Image-oppdateringen hoppes over når img er None (den var en
+    garantert no-op: coalesce(NULL, image_url)) — semantikken beholdes for
+    fremtidig feed-modus der img faktisk settes."""
     code = rec.get("manufacturer_code")
     eans = [s.get("ean") for s in rec.get("sizes", []) if s.get("ean")]
     img = rec.get("image_url") if STORE_SCRAPED_IMAGES else None
 
+    def _touch_img(vid):
+        if img is not None:
+            cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
+                        (img, vid))
+
     # 1) match på produsentkode (Asics-kode)
     if code:
-        cur.execute(
-            "select id from prislop.variants where product_id = %s and manufacturer_code = %s limit 1",
-            (product_id, code),
-        )
-        row = cur.fetchone()
-        if row:
-            cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
-                        (img, row[0]))
-            return row[0]
+        vid = cache.var_by_code.get((product_id, code))
+        if vid:
+            _touch_img(vid)
+            return vid
 
     # 2) match på EAN-overlapp blant produktets varianter (broer kodeløse butikker)
     if eans:
-        cur.execute(
-            """
-            select distinct v.id from prislop.variants v
-            join prislop.offers o on o.variant_id = v.id
-            join prislop.offer_sizes os on os.offer_id = o.id
-            where v.product_id = %s and os.ean = any(%s)
-            limit 1
-            """,
-            (product_id, eans),
-        )
-        row = cur.fetchone()
-        if row:
-            vid = row[0]
-            if code:   # arve produsentkode hvis vi nå kjenner den og varianten mangler den
+        vid = None
+        for ean in eans:
+            vid = cache.var_by_ean.get((product_id, ean))
+            if vid:
+                break
+        if vid:
+            if code and cache.var_code.get(vid) is None:
+                # arve produsentkode hvis vi nå kjenner den og varianten mangler den
                 cur.execute(
                     "update prislop.variants set manufacturer_code = %s where id = %s and manufacturer_code is null",
                     (code, vid),
                 )
-            cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
-                        (img, vid))
+                cache.var_code[vid] = code
+                cache.var_by_code[(product_id, code)] = vid
+            _touch_img(vid)
             return vid
 
     # 2.5) match på butikkens artikkelnummer — fanger butikker uten kode/EAN (XXL)
     sku = rec.get("store_sku")
     if sku and store_id is not None:
-        cur.execute(
-            """
-            select o.variant_id from prislop.offers o
-            join prislop.variants v on v.id = o.variant_id
-            where o.store_id = %s and o.store_sku = %s and v.product_id = %s
-            limit 1
-            """,
-            (store_id, sku, product_id),
-        )
-        row = cur.fetchone()
-        if row:
-            vid = row[0]
-            if code:
+        sku_map, _ = cache.store_maps(cur, store_id)
+        vid = sku_map.get((sku, product_id))
+        if vid:
+            if code and cache.var_code.get(vid) is None:
                 cur.execute(
                     "update prislop.variants set manufacturer_code = %s where id = %s and manufacturer_code is null",
                     (code, vid),
                 )
-            cur.execute("update prislop.variants set image_url = coalesce(%s, image_url) where id = %s",
-                        (img, vid))
+                cache.var_code[vid] = code
+                cache.var_by_code[(product_id, code)] = vid
+            _touch_img(vid)
             return vid
 
     # 3) ny fargevei (kanonisk farge = butikkens navn ved første observasjon)
@@ -202,23 +279,29 @@ def get_or_create_variant(cur, product_id: str, rec: dict, store_id: int | None 
         "values (%s, %s, %s, %s) returning id",
         (product_id, rec.get("color"), code, img),
     )
-    return cur.fetchone()[0]
+    vid = cur.fetchone()[0]
+    cache.var_code[vid] = code
+    cache.var_product[vid] = product_id
+    if code:
+        cache.var_by_code[(product_id, code)] = vid
+    return vid
 
 
-def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, run_ts=None) -> tuple[str, bool]:
+def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, cache: RunCache,
+                 run_ts=None) -> tuple[str, bool]:
     """Upserter tilbudet og fører prishistorikk KUN når prisen er ny/endret.
     Returnerer (offer_id, accepted). accepted=False når samme (butikk, variant)
     alt er sett i DENNE kjøringen med lavere/lik pris — da hopper vi over
     recorden. Skjer når én butikk har TO artikkelnumre for samme fysiske
     colorway (XXL: gammel artikkel på klarering + ny sesongartikkel, samme
     EAN-er, funnet 5. juli: 57 tilbud flip-floppet 289/729 i prishistorikken).
-    Vi beholder deterministisk det BILLIGSTE av duplikatene."""
-    cur.execute(
-        "select id, current_price, last_seen_at from prislop.offers "
-        "where store_id = %s and variant_id = %s",
-        (store_id, variant_id),
-    )
-    existing = cur.fetchone()
+    Vi beholder deterministisk det BILLIGSTE av duplikatene.
+
+    Ytelses-notat (8. juli): eksisterende tilbud slås opp i RunCache (prefetchet
+    per butikk) i stedet for SELECT per record. Cachen oppdateres ved skriv, så
+    duplikat-regelen ser nøyaktig det samme som DB-selecten gjorde."""
+    _, offers_map = cache.store_maps(cur, store_id)
+    existing = offers_map.get(variant_id)
     price = rec.get("price")
     currency = rec.get("currency", "NOK")
     any_stock = any(s.get("in_stock") for s in rec.get("sizes", []))
@@ -240,6 +323,7 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, run_ts=None) ->
              price, any_stock, offer_id),
         )
         price_changed = price is not None and price != old_price
+        offers_map[variant_id] = [offer_id, price, run_ts]   # now() i tx = run_ts
     else:
         cur.execute(
             """
@@ -253,6 +337,11 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, run_ts=None) ->
         )
         offer_id = cur.fetchone()[0]
         price_changed = price is not None
+        offers_map[variant_id] = [offer_id, price, run_ts]
+        # SKU-broen skal se tilbudet vi nettopp skrev (innen-tx-synlighet)
+        if rec.get("store_sku"):
+            sku_map, _ = cache.store_maps(cur, store_id)
+            sku_map.setdefault((rec["store_sku"], cache.var_product[variant_id]), variant_id)
 
     if price_changed:
         # Same-run-idempotent: aksepteres en BILLIGERE duplikat-record senere i
@@ -346,17 +435,23 @@ def load(offers: list[dict]) -> dict:
             with conn.cursor() as cur:
                 cur.execute("select now()")   # transaksjonstid = «sett i denne kjøringen»
                 run_ts = cur.fetchone()[0]
+                cache = RunCache(cur)         # prefetch: 3 selects + 2 per butikk (lazy)
                 store_ids: dict[str, int] = {}
                 for rec in offers:
                     slug = rec["store"]["slug"]
                     if slug not in store_ids:
                         store_ids[slug] = upsert_store(cur, rec["store"])
-                    product_id = upsert_product(cur, rec)
-                    variant_id = get_or_create_variant(cur, product_id, rec, store_ids[slug])
-                    offer_id, accepted = upsert_offer(cur, store_ids[slug], variant_id, rec, run_ts)
+                    product_id = upsert_product(cur, rec, cache)
+                    variant_id = get_or_create_variant(cur, product_id, rec, cache, store_ids[slug])
+                    offer_id, accepted = upsert_offer(cur, store_ids[slug], variant_id, rec, cache, run_ts)
                     if not accepted:
                         continue             # dyrere duplikat-artikkel i samme kjøring
                     stats["sizes"] += upsert_sizes(cur, offer_id, rec.get("sizes", []))
+                    # EAN-broen skal se størrelsene vi nettopp skrev (matcher den
+                    # gamle join-spørringens innen-transaksjon-synlighet)
+                    for s in rec.get("sizes", []):
+                        if s.get("ean"):
+                            cache.var_by_ean.setdefault((product_id, s["ean"]), variant_id)
                     stats["offers"] += 1
                 # Etter at alt er upsertet: flagg det vi IKKE så denne kjøringen
                 # (forsvunne fargevarianter) som utgått — per butikk, aldri andre.
