@@ -18,7 +18,7 @@ jobs:
 
       - name: Punycode-vakt (xn--prislp-vxa er alltid feil)
         run: |
-          if grep -rIn --exclude-dir=.git 'xn--prislp-vxa' .; then
+          if grep -rIn --exclude-dir=.git --exclude-dir=workflows 'xn--prislp-vxa' .; then
             echo "::error::Feil punycode-form 'xn--prislp-vxa' funnet i repoet. Riktig form er xn--prislp-fya.no. Kopier alltid punycode fra CNAME-filen, aldri fra hukommelsen."
             exit 1
           fi
