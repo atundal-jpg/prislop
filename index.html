@@ -211,6 +211,7 @@
 
   /* states */
   .state{border:1px dashed var(--line);border-radius:16px;padding:40px 24px;text-align:center;color:var(--muted);background:#fff}
+  .more-row{display:flex;justify-content:center;padding:26px 0 6px}
   .state h3{font-family:var(--disp);font-size:19px;color:var(--ink);margin-bottom:6px}
   .state .btn{margin-top:16px}
   .skel{height:104px;border:1px solid var(--line);border-radius:18px;background:
@@ -426,6 +427,87 @@ const HOME_URL   = CANON_BASE;
 let PRODUCT_BY_ID = {};
 const productUrl = pid => CANON_BASE + "?product=" + encodeURIComponent(pid);
 
+/* ---- paginering: kort forsideliste (topp N etter rank_score), «Vis flere» for resten ---- */
+const PAGE_SIZE = 18;
+let visibleCount = PAGE_SIZE;
+let pinnedPid = null;            // dyplenket produkt utenfor synlig side festes øverst
+function showMore(){ visibleCount += 30; render(); }
+function resetPaging(){ visibleCount = PAGE_SIZE; pinnedPid = null; }
+
+/* ---- SEO fase 2 · spor 2: Product/Offer-JSON-LD per åpnet produkt ---- */
+function productJsonLd(pid){
+  const p = PRODUCT_BY_ID[pid];
+  if(!p) return null;
+  const url = productUrl(pid);
+  const node = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "@id": url + "#product",
+    "name": p.brand + " " + p.model,
+    "brand": { "@type": "Brand", "name": p.brand },
+    "url": url,
+    "category": "Løpesko"
+  };
+  const offers = offerCache[pid];
+  if(offers && offers.length){
+    // kollaps til billigste tilbud per butikk (colorways deler pris-nivå i JSON-LD)
+    const byStore = {};
+    offers.forEach(o => {
+      if(o.price == null) return;
+      const k = o.store || "";
+      if(!byStore[k] || Number(o.price) < Number(byStore[k].price)
+         || (Number(o.price) === Number(byStore[k].price) && o.in_stock !== false && byStore[k].in_stock === false)){
+        byStore[k] = o;
+      }
+    });
+    const per = Object.values(byStore).sort((a,b)=>Number(a.price)-Number(b.price));
+    if(per.length){
+      const prices = per.map(o => Number(o.price));
+      node.offers = {
+        "@type": "AggregateOffer",
+        "priceCurrency": "NOK",
+        "lowPrice": Math.min.apply(null, prices),
+        "highPrice": Math.max.apply(null, prices),
+        "offerCount": per.length,
+        "offers": per.map(o => ({
+          "@type": "Offer",
+          "price": Number(o.price),
+          "priceCurrency": o.currency || "NOK",
+          "availability": o.in_stock !== false ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          "itemCondition": "https://schema.org/NewCondition",
+          "url": o.url || url,
+          "seller": { "@type": "Organization", "name": o.store || "Butikk" }
+        }))
+      };
+    }
+  }
+  if(!node.offers && p.from_price != null){
+    // fallback før tilbudene er lastet: aggregat fra produktraden
+    node.offers = {
+      "@type": "AggregateOffer",
+      "priceCurrency": "NOK",
+      "lowPrice": Number(p.from_price),
+      "offerCount": Number(p.n_stores) || 1,
+      "availability": (p.sizes_in_stock > 0) ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+    };
+  }
+  return node;
+}
+function injectProductJsonLd(pid){
+  removeProductJsonLd();
+  const node = productJsonLd(pid);
+  if(!node) return;
+  const s = document.createElement("script");
+  s.type = "application/ld+json";
+  s.id = "product-jsonld";
+  s.textContent = JSON.stringify(node);
+  document.head.appendChild(s);
+}
+function removeProductJsonLd(){
+  const s = el("product-jsonld");
+  if(s) s.remove();
+}
+
 const metaC   = sel => { const n = document.querySelector(sel); return n ? (n.getAttribute("content") || n.getAttribute("href") || "") : ""; };
 const setAttr = (sel, attr, val) => { const n = document.querySelector(sel); if(n) n.setAttribute(attr, val); };
 
@@ -439,8 +521,7 @@ const HEAD_DEFAULTS = {
   twDesc:  metaC('meta[name="twitter:description"]')
 };
 
-function productTitle(p){ return p.brand + " " + p.model + " – priser og lager | Prisløp"; }
-function productDesc(p){
+function productTitle(p){ return p.brand + " " + p.model + " – priser og lager | Prisløp"; }function productDesc(p){
   const price  = p.from_price!=null ? "Laveste pris " + nok(p.from_price) + " kr" : "Sammenlign priser";
   const stores = p.n_stores ? " fra " + p.n_stores + " butikk" + (Number(p.n_stores)===1?"":"er") : "";
   return p.brand + " " + p.model + ": " + price + stores + ". Se lager per størrelse og følg prisutviklingen på Prisløp.";
@@ -458,6 +539,7 @@ function applyProductMeta(pid){
   setAttr('meta[name="description"]',       "content", d);
   setAttr('meta[property="og:description"]', "content", d);
   setAttr('meta[name="twitter:description"]', "content", d);
+  injectProductJsonLd(pid);
 }
 function applyHomeMeta(){
   setAttr('link[rel="canonical"]', "href", HOME_URL);
@@ -468,6 +550,7 @@ function applyHomeMeta(){
   setAttr('meta[property="og:description"]', "content", HEAD_DEFAULTS.ogDesc);
   setAttr('meta[name="twitter:title"]',      "content", HEAD_DEFAULTS.twTitle);
   setAttr('meta[name="twitter:description"]', "content", HEAD_DEFAULTS.twDesc);
+  removeProductJsonLd();
 }
 // hold URL-en på «hjem» når brukeren filtrerer/søker (render() river uansett åpne kort)
 function ensureHomeUrl(){
@@ -483,17 +566,23 @@ function scrollToCard(card){
 // åpne kortet som ligger i URL-en ved sidelast (delt/googlet dyplenke)
 function openFromUrl(){
   const pid = new URLSearchParams(location.search).get("product");
-  if(!pid) return;
-  const card = document.querySelector('.product[data-pid="' + pid + '"]');
-  if(!card) return;                                    // filtrert bort / slått sammen → bli på lista
+  if(!pid || !PRODUCT_BY_ID[pid]) return;             // ukjent/sammenslått id → bli på lista
+  let card = document.querySelector('.product[data-pid="' + pid + '"]');
+  if(!card){                                          // utenfor topp-N → fest øverst og re-render
+    pinnedPid = pid;
+    render();
+    card = document.querySelector('.product[data-pid="' + pid + '"]');
+  }
+  if(!card) return;
   history.replaceState({ pid }, "", productUrl(pid));  // fest state uten ny history-oppføring
   openCard(card, { push:false, scroll:true });
 }
 // synk DOM mot URL ved fram/tilbake i nettleseren
 function syncFromLocation(){
   const pid = new URLSearchParams(location.search).get("product");
-  if(pid){
-    const card = document.querySelector('.product[data-pid="' + pid + '"]');
+  if(pid && PRODUCT_BY_ID[pid]){
+    let card = document.querySelector('.product[data-pid="' + pid + '"]');
+    if(!card){ pinnedPid = pid; render(); card = document.querySelector('.product[data-pid="' + pid + '"]'); }
     if(card){ openCard(card, { push:false, scroll:false }); return; }
   }
   document.querySelectorAll(".product.open").forEach(closeCard);
@@ -552,17 +641,17 @@ async function fetchSizeOptions(){
 
 function bindControls(){
   let t;
-  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); ensureHomeUrl(); render(); }, 140); });
-  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; ensureHomeUrl(); render(); });
-  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; ensureHomeUrl(); render(); });
-  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; ensureHomeUrl(); render(); });
+  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); resetPaging(); ensureHomeUrl(); render(); }, 140); });
+  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
+  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
+  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
   el("f-size").addEventListener("change", async e => {
     filters.size = e.target.value;
     if(filters.size && !sizeFilterCache[filters.size]){
       try{ sizeFilterCache[filters.size] = await productIdsWithSize(filters.size); }
       catch(err){ sizeFilterCache[filters.size] = null; }
     }
-    ensureHomeUrl(); render();
+    resetPaging(); ensureHomeUrl(); render();
   });
 }
 
@@ -589,7 +678,18 @@ function currentList(){
 function render(){
   const list = currentList();
   const anyFilter = filters.q||filters.brand||filters.gender||filters.size;
-  el("countrow").innerHTML = list.length + (list.length===1?" modell":" modeller")
+
+  let shown = list.slice(0, visibleCount);
+  // dyplenket produkt utenfor synlig side: fest øverst så URL-en alltid rendrer kortet
+  if(pinnedPid && !shown.some(p => p.product_id === pinnedPid)){
+    const pin = PRODUCT_BY_ID[pinnedPid];
+    if(pin) shown = [pin].concat(shown);
+  }
+
+  el("countrow").innerHTML =
+    (shown.length < list.length
+      ? "Viser " + shown.length + " av " + list.length + " modeller"
+      : list.length + (list.length===1?" modell":" modeller"))
     + (anyFilter ? ' <button class="reset" onclick="resetFilters()">nullstill filtre</button>' : "");
 
   if(!list.length){
@@ -598,7 +698,11 @@ function render(){
       + '<button class="btn" onclick="resetFilters()">Nullstill filtre</button></div>';
     return;
   }
-  el("products").innerHTML = list.map(cardHTML).join("");
+  el("products").innerHTML = shown.map(cardHTML).join("")
+    + (list.length > shown.length
+      ? '<div class="more-row"><button class="btn" onclick="showMore()">Vis flere modeller ('
+        + (list.length - shown.length) + ' igjen)</button></div>'
+      : "");
 }
 
 function cardHTML(p){
@@ -904,11 +1008,13 @@ function showToast(msg){
 function resetFilters(){
   filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
+  resetPaging();
   ensureHomeUrl();
   render();
 }
 window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
 window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=init;
+window.showMore=showMore;
 
 window.addEventListener("popstate", syncFromLocation);   // nettleser fram/tilbake
 init();
