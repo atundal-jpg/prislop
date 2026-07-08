@@ -420,11 +420,92 @@ const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" ar
 
 const el = id => document.getElementById(id);
 
+/* ---- SEO fase 2 · spor 1: per-produkt-URL, deep-link, canonical/title ---- */
+const CANON_BASE = "https://xn--prislp-fya.no/";   // punycode: ALLTID -fya (aldri -vxa)
+const HOME_URL   = CANON_BASE;
+let PRODUCT_BY_ID = {};
+const productUrl = pid => CANON_BASE + "?product=" + encodeURIComponent(pid);
+
+const metaC   = sel => { const n = document.querySelector(sel); return n ? (n.getAttribute("content") || n.getAttribute("href") || "") : ""; };
+const setAttr = (sel, attr, val) => { const n = document.querySelector(sel); if(n) n.setAttribute(attr, val); };
+
+// fang standard-head-verdiene ved last, så «hjem» kan gjenopprettes eksakt
+const HEAD_DEFAULTS = {
+  title:   document.title,
+  desc:    metaC('meta[name="description"]'),
+  ogTitle: metaC('meta[property="og:title"]'),
+  ogDesc:  metaC('meta[property="og:description"]'),
+  twTitle: metaC('meta[name="twitter:title"]'),
+  twDesc:  metaC('meta[name="twitter:description"]')
+};
+
+function productTitle(p){ return p.brand + " " + p.model + " – priser og lager | Prisløp"; }
+function productDesc(p){
+  const price  = p.from_price!=null ? "Laveste pris " + nok(p.from_price) + " kr" : "Sammenlign priser";
+  const stores = p.n_stores ? " fra " + p.n_stores + " butikk" + (Number(p.n_stores)===1?"":"er") : "";
+  return p.brand + " " + p.model + ": " + price + stores + ". Se lager per størrelse og følg prisutviklingen på Prisløp.";
+}
+function applyProductMeta(pid){
+  const url = productUrl(pid);
+  setAttr('link[rel="canonical"]', "href", url);
+  setAttr('meta[property="og:url"]', "content", url);
+  const p = PRODUCT_BY_ID[pid];
+  if(!p) return;
+  const t = productTitle(p), d = productDesc(p);
+  document.title = t;
+  setAttr('meta[property="og:title"]',     "content", t);
+  setAttr('meta[name="twitter:title"]',    "content", t);
+  setAttr('meta[name="description"]',       "content", d);
+  setAttr('meta[property="og:description"]', "content", d);
+  setAttr('meta[name="twitter:description"]', "content", d);
+}
+function applyHomeMeta(){
+  setAttr('link[rel="canonical"]', "href", HOME_URL);
+  setAttr('meta[property="og:url"]', "content", HOME_URL);
+  document.title = HEAD_DEFAULTS.title;
+  setAttr('meta[name="description"]',        "content", HEAD_DEFAULTS.desc);
+  setAttr('meta[property="og:title"]',       "content", HEAD_DEFAULTS.ogTitle);
+  setAttr('meta[property="og:description"]', "content", HEAD_DEFAULTS.ogDesc);
+  setAttr('meta[name="twitter:title"]',      "content", HEAD_DEFAULTS.twTitle);
+  setAttr('meta[name="twitter:description"]', "content", HEAD_DEFAULTS.twDesc);
+}
+// hold URL-en på «hjem» når brukeren filtrerer/søker (render() river uansett åpne kort)
+function ensureHomeUrl(){
+  if(new URLSearchParams(location.search).get("product")){
+    history.replaceState({}, "", HOME_URL);
+    applyHomeMeta();
+  }
+}
+function scrollToCard(card){
+  const y = card.getBoundingClientRect().top + window.pageYOffset - 76;
+  window.scrollTo({ top: y, behavior: "auto" });
+}
+// åpne kortet som ligger i URL-en ved sidelast (delt/googlet dyplenke)
+function openFromUrl(){
+  const pid = new URLSearchParams(location.search).get("product");
+  if(!pid) return;
+  const card = document.querySelector('.product[data-pid="' + pid + '"]');
+  if(!card) return;                                    // filtrert bort / slått sammen → bli på lista
+  history.replaceState({ pid }, "", productUrl(pid));  // fest state uten ny history-oppføring
+  openCard(card, { push:false, scroll:true });
+}
+// synk DOM mot URL ved fram/tilbake i nettleseren
+function syncFromLocation(){
+  const pid = new URLSearchParams(location.search).get("product");
+  if(pid){
+    const card = document.querySelector('.product[data-pid="' + pid + '"]');
+    if(card){ openCard(card, { push:false, scroll:false }); return; }
+  }
+  document.querySelectorAll(".product.open").forEach(closeCard);
+  applyHomeMeta();
+}
+
 async function init(){
   handleAuthCallback();
   el("products").innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try{
     PRODUCTS = await fetchProducts();
+    PRODUCT_BY_ID = {}; PRODUCTS.forEach(p => { PRODUCT_BY_ID[p.product_id] = p; });
   }catch(e){
     el("products").innerHTML = '<div class="state"><h3>Får ikke kontakt med katalogen</h3>'
       + '<p>Noe gikk galt da vi hentet prisene. Sjekk nettforbindelsen og prøv igjen.</p>'
@@ -436,6 +517,7 @@ async function init(){
   await buildHeroStats();
   bindControls();
   render();
+  openFromUrl();
 }
 
 async function buildHeroStats(){
@@ -470,17 +552,17 @@ async function fetchSizeOptions(){
 
 function bindControls(){
   let t;
-  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); render(); }, 140); });
-  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; render(); });
-  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; render(); });
-  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; render(); });
+  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); ensureHomeUrl(); render(); }, 140); });
+  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; ensureHomeUrl(); render(); });
+  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; ensureHomeUrl(); render(); });
+  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; ensureHomeUrl(); render(); });
   el("f-size").addEventListener("change", async e => {
     filters.size = e.target.value;
     if(filters.size && !sizeFilterCache[filters.size]){
       try{ sizeFilterCache[filters.size] = await productIdsWithSize(filters.size); }
       catch(err){ sizeFilterCache[filters.size] = null; }
     }
-    render();
+    ensureHomeUrl(); render();
   });
 }
 
@@ -542,25 +624,49 @@ function plur(n,one,many){ n=Number(n)||0; return n+" "+(n===1?one:many); }
 
 async function toggle(btn){
   const card = btn.closest(".product");
+  if(card.classList.contains("open")){
+    closeCard(card);
+    history.pushState({}, "", HOME_URL);   // lukk → tilbake til forsida
+    applyHomeMeta();
+  }else{
+    await openCard(card, { push:true, scroll:false });
+  }
+}
+async function openCard(card, opt){
+  opt = opt || {};
+  // trekkspill: bare ett kort åpent av gangen → URL ↔ DOM 1:1
+  document.querySelectorAll(".product.open").forEach(c => { if(c!==card) closeCard(c); });
+  card.classList.add("open");
+  const btn = card.querySelector(".p-head");
+  if(btn) btn.setAttribute("aria-expanded", "true");
+  await loadBody(card);
   const pid = card.dataset.pid;
-  const open = card.classList.toggle("open");
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
-  if(open && !card.dataset.loaded){
-    card.dataset.loaded = "1";
-    const body = el("body-"+pid);
-    body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">Henter butikker og størrelser …</span></div>';
-    try{
-      const [offers, sizes, series] = await Promise.all([
-        offerCache[pid]  || (offerCache[pid]  = await fetchOffers(pid)),
-        sizeCache[pid]   || (sizeCache[pid]   = await fetchSizes(pid)),
-        seriesCache[pid] || (seriesCache[pid] = await fetchSeries(pid)),
-      ]);
-      body.innerHTML = sparkHTML(series) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
-    }catch(e){
-      body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
-        + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
-      card.dataset.loaded = "";
-    }
+  if(opt.push !== false) history.pushState({ pid }, "", productUrl(pid));
+  applyProductMeta(pid);
+  if(opt.scroll) scrollToCard(card);
+}
+function closeCard(card){
+  card.classList.remove("open");
+  const btn = card.querySelector(".p-head");
+  if(btn) btn.setAttribute("aria-expanded", "false");
+}
+async function loadBody(card){
+  if(card.dataset.loaded) return;                     // body caches i DOM, hentes kun én gang
+  const pid = card.dataset.pid;
+  card.dataset.loaded = "1";
+  const body = el("body-"+pid);
+  body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">Henter butikker og størrelser …</span></div>';
+  try{
+    const [offers, sizes, series] = await Promise.all([
+      offerCache[pid]  || (offerCache[pid]  = await fetchOffers(pid)),
+      sizeCache[pid]   || (sizeCache[pid]   = await fetchSizes(pid)),
+      seriesCache[pid] || (seriesCache[pid] = await fetchSeries(pid)),
+    ]);
+    body.innerHTML = sparkHTML(series) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
+  }catch(e){
+    body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
+      + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
+    card.dataset.loaded = "";
   }
 }
 
@@ -798,11 +904,13 @@ function showToast(msg){
 function resetFilters(){
   filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
+  ensureHomeUrl();
   render();
 }
 window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
 window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=init;
 
+window.addEventListener("popstate", syncFromLocation);   // nettleser fram/tilbake
 init();
 </script>
 </body>
