@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Punycode-vakt (xn--prislp-vxa er alltid feil)
+        run: |
+          if grep -rIn --exclude-dir=.git 'xn--prislp-vxa' .; then
+            echo "::error::Feil punycode-form 'xn--prislp-vxa' funnet i repoet. Riktig form er xn--prislp-fya.no. Kopier alltid punycode fra CNAME-filen, aldri fra hukommelsen."
+            exit 1
+          fi
+          echo "Punycode-sjekk OK — ingen forekomster av feil form."
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -30,6 +38,12 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python run_pipeline.py
 
+      - name: Etter-harvest-sjekk (re-split-vakt)
+        working-directory: scraper
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python post_harvest_check.py
+
       - name: Send prisvarsler
         working-directory: scraper
         env:
@@ -37,3 +51,24 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_FROM: ${{ secrets.ALERT_FROM }}
         run: python send_alerts.py
+
+      - name: Dødmannsping — vellykket kjøring
+        if: success()
+        env:
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: |
+          if [ -z "$HEALTHCHECKS_PING_URL" ]; then
+            echo "HEALTHCHECKS_PING_URL ikke satt ennå — hopper over ping. Se GJENSTÅR i prosjektbriefen."
+            exit 0
+          fi
+          curl -fsS -m 10 --retry 3 "$HEALTHCHECKS_PING_URL"
+
+      - name: Dødmannsping — feilet kjøring
+        if: failure()
+        env:
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: |
+          if [ -z "$HEALTHCHECKS_PING_URL" ]; then
+            exit 0
+          fi
+          curl -fsS -m 10 --retry 3 "$HEALTHCHECKS_PING_URL/fail" || true
