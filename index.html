@@ -181,17 +181,10 @@
   /* product list */
   .list{display:flex;flex-direction:column;gap:16px}
   .product{border:1px solid var(--line);background:#fff;border-radius:18px;overflow:hidden}
-  .p-head{all:unset;display:flex;align-items:center;gap:22px;flex:1;min-width:0;cursor:pointer;flex-wrap:wrap}
+  .p-head{all:unset;display:block;width:100%;cursor:pointer}
   .p-head:focus-visible{outline:2.5px solid var(--petrol);outline-offset:-2px}
-  .p-top{display:flex;gap:12px;align-items:center;padding:22px 24px;flex-wrap:wrap}
+  .p-top{display:flex;gap:22px;align-items:center;padding:22px 24px;flex-wrap:wrap}
   .product.open .p-top{border-bottom:1px solid var(--line)}
-  /* sammenlign-avkrysning — egen knapp ved siden av p-head (kan ikke neste button-i-button) */
-  .cmp{appearance:none;cursor:pointer;flex:0 0 auto;width:28px;height:28px;border-radius:8px;
-    border:1.5px solid var(--line);background:#fff;color:transparent;display:grid;place-items:center;
-    transition:background .12s,border-color .12s,color .12s}
-  .cmp:hover{border-color:var(--petrol)}
-  .cmp[aria-pressed="true"]{background:var(--petrol);border-color:var(--petrol);color:#fff}
-  .cmp:focus-visible{outline:2.5px solid var(--petrol);outline-offset:1px}
   .shoe{flex:0 0 72px;height:72px;border-radius:14px;background:var(--petrol-soft);display:grid;place-items:center}
   .p-id{flex:1;min-width:200px}
   .p-id .brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
@@ -284,40 +277,6 @@
     background:var(--ink);color:#fff;font-size:14.5px;padding:13px 18px;border-radius:12px;
     box-shadow:0 8px 30px rgba(0,0,0,.18);transition:opacity .25s,transform .25s;z-index:50;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-  /* sammenlign: sticky bunnlinje + fullskjerm sammenligningsvisning */
-  .cmpbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;justify-content:space-between;
-    gap:14px;background:var(--ink);color:#fff;padding:14px 20px;padding-bottom:max(14px,env(safe-area-inset-bottom));
-    box-shadow:0 -6px 24px rgba(0,0,0,.18)}
-  .cmpbar-count{font-family:var(--mono);font-size:13.5px}
-  .cmpbar-actions{display:flex;align-items:center;gap:14px}
-  .cmpbar-clear{background:none;border:0;color:#cfd6d3;font-family:var(--mono);font-size:12.5px;cursor:pointer;text-decoration:underline;padding:0}
-  .cmpbar .btn{padding:10px 16px;font-size:14px}
-
-  .cmpview{position:fixed;inset:0;z-index:60;background:var(--paper);overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .cmpview-inner{padding-top:28px;padding-bottom:56px}
-  .cmpview-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-  .cmpview-head h2{font-size:clamp(22px,3.4vw,30px)}
-  .cmpview-close{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:50%;
-    width:38px;height:38px;display:grid;place-items:center;color:var(--ink)}
-  .cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-  .cmpcard{position:relative;border:1px solid var(--line);background:#fff;border-radius:16px;padding:22px}
-  .cmpx{position:absolute;top:14px;right:14px;appearance:none;cursor:pointer;background:none;border:0;
-    color:var(--muted);width:26px;height:26px;font-size:20px;line-height:1;border-radius:50%}
-  .cmpx:hover{background:var(--petrol-soft);color:var(--petrol)}
-  .cmp-brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  .cmpcard h3{font-size:20px;margin-top:4px;padding-right:24px}
-  .cmp-price{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:-.02em;margin:14px 0}
-  .cmp-price span{font-size:14px;color:var(--muted);font-weight:500}
-  .cmp-pricelbl{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
-  .cmp-facts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-  .cmp-facts li{display:flex;justify-content:space-between;font-size:14px;border-top:1px solid var(--line);padding-top:8px}
-  .cmp-facts li:first-child{border-top:0;padding-top:0}
-  .cmp-facts span{color:var(--muted)}
-  .cmp-attrs{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
-  .tagchip{font-family:var(--mono);font-size:11px;background:var(--honey-soft);color:var(--honey);
-    border-radius:999px;padding:5px 10px}
-  .cmp-open{width:100%;margin-top:16px}
 
   /* faq */
   .faqlist{display:flex;flex-direction:column;gap:10px}
@@ -489,26 +448,6 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<div class="cmpbar" id="cmpbar" hidden>
-  <span class="cmpbar-count" id="cmpcount"></span>
-  <div class="cmpbar-actions">
-    <button class="cmpbar-clear" onclick="clearCompare()">Nullstill</button>
-    <button class="btn" onclick="openCompare()">Sammenlign →</button>
-  </div>
-</div>
-
-<div class="cmpview" id="cmpview" hidden>
-  <div class="wrap cmpview-inner">
-    <div class="cmpview-head">
-      <h2>Sammenlign</h2>
-      <button class="cmpview-close" onclick="closeCompare()" aria-label="Lukk sammenligning">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-    <div class="cmpgrid" id="cmpgrid"></div>
-  </div>
-</div>
-
 <script>
 /* ============================================================
    Prisløp — forside. Henter live fra Supabase public-views.
@@ -566,9 +505,6 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
-/* sammenlign: velger på tvers av filtre/sider, maks 3 om gangen */
-const compareSet = new Set();
-const MAX_COMPARE = 3;
 const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false };
 
 // Spor 4: brukskategorier (subcategory i v_prislop_products). Etikettene
@@ -1071,108 +1007,22 @@ function cardHTML(p){
                cap(p.gender), plur(p.n_colorways,"farge","farger"),
                (p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
                .filter(Boolean).join(" · ");
-  const cmpOn = compareSet.has(p.product_id);
   return ''
   + '<article class="product" data-pid="'+p.product_id+'">'
-  +   '<div class="p-top">'
-  +     '<button class="cmp" aria-pressed="'+(cmpOn?'true':'false')+'" aria-label="Legg til i sammenligning" onclick="toggleCompare(event,\''+p.product_id+'\')">'
-  +       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>'
-  +     '</button>'
-  +     '<button class="p-head" aria-expanded="false" onclick="toggle(this)">'
+  +   '<button class="p-head" aria-expanded="false" onclick="toggle(this)">'
+  +     '<div class="p-top">'
   +       '<div class="shoe">'+SHOE_SVG+'</div>'
   +       '<div class="p-id"><div class="brand">'+esc(p.brand)+'</div>'
   +          '<h3>'+esc(p.model)+'</h3><div class="sub">'+esc(sub)+'</div></div>'
   +       '<div class="from"><div class="lbl">Lavest nå</div>'
   +          '<div class="val">'+nok(p.from_price)+'&nbsp;<span>kr</span></div></div>'
   +       '<div class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'
-  +     '</button>'
-  +   '</div>'
+  +     '</div>'
+  +   '</button>'
   +   '<div class="p-body" id="body-'+p.product_id+'"></div>'
   + '</article>';
 }
 function plur(n,one,many){ n=Number(n)||0; return n+" "+(n===1?one:many); }
-
-/* ---- CRO: sammenlign 2–3 sko side om side ---- */
-function toggleCompare(ev, pid){
-  ev.preventDefault(); ev.stopPropagation();    // ikke la klikket bable til p-head (åpne kort)
-  const btn = ev.currentTarget;
-  if(compareSet.has(pid)){
-    compareSet.delete(pid);
-    btn.setAttribute("aria-pressed", "false");
-  }else{
-    if(compareSet.size >= MAX_COMPARE){
-      showToast("Du kan sammenligne maks " + MAX_COMPARE + " sko om gangen.");
-      return;
-    }
-    compareSet.add(pid);
-    btn.setAttribute("aria-pressed", "true");
-  }
-  updateCompareBar();
-}
-function updateCompareBar(){
-  const bar = el("cmpbar");
-  if(!bar) return;
-  if(compareSet.size < 2){ bar.hidden = true; return; }
-  bar.hidden = false;
-  el("cmpcount").textContent = compareSet.size + " av " + MAX_COMPARE + " valgt";
-}
-function clearCompare(){
-  compareSet.clear();
-  updateCompareBar();
-  render();   // resynker avkrysningsstatusen på synlige kort
-}
-function compareItems(){
-  return PRODUCTS.filter(p => compareSet.has(p.product_id));
-}
-function openCompare(){
-  const items = compareItems();
-  if(items.length < 2) return;
-  el("cmpgrid").innerHTML = items.map(compareCardHTML).join("");
-  el("cmpview").hidden = false;
-  document.body.style.overflow = "hidden";
-}
-function closeCompare(){
-  el("cmpview").hidden = true;
-  document.body.style.overflow = "";
-}
-function compareCardHTML(p){
-  const attrs = [
-    p.carbon_plate ? "Karbonplate" : null,
-    p.waterproof   ? "Vanntett"    : null,
-    p.wide         ? "Wide/bred lest" : null
-  ].filter(Boolean);
-  const kat = KAT_LABELS[p.subcategory] || null;
-  return ''
-  + '<div class="cmpcard">'
-  +   '<button class="cmpx" onclick="removeFromCompare(\''+p.product_id+'\')" aria-label="Fjern fra sammenligning">×</button>'
-  +   '<div class="cmp-brand">'+esc(p.brand)+'</div>'
-  +   '<h3>'+esc(p.model)+'</h3>'
-  +   (kat ? '<span class="pill" style="margin-top:8px;display:inline-block">'+esc(kat)+'</span>' : '')
-  +   '<div class="cmp-price">'+nok(p.from_price)+'&nbsp;<span>kr</span><span class="cmp-pricelbl">Lavest nå</span></div>'
-  +   '<ul class="cmp-facts">'
-  +     '<li><span>Butikker</span><b>'+(p.n_stores||0)+'</b></li>'
-  +     '<li><span>Farger</span><b>'+(p.n_colorways||0)+'</b></li>'
-  +     '<li><span>Størrelser på lager</span><b>'+(p.sizes_in_stock||0)+'</b></li>'
-  +     '<li><span>Kjønn</span><b>'+esc(cap(p.gender)||'–')+'</b></li>'
-  +   '</ul>'
-  +   (attrs.length ? '<div class="cmp-attrs">'+attrs.map(a=>'<span class="tagchip">'+esc(a)+'</span>').join('')+'</div>' : '')
-  +   '<button class="btn cmp-open" onclick="openFromCompare(\''+p.product_id+'\')">Åpne sko →</button>'
-  + '</div>';
-}
-function removeFromCompare(pid){
-  compareSet.delete(pid);
-  updateCompareBar();
-  const items = compareItems();
-  if(items.length < 2){ closeCompare(); }
-  else{ el("cmpgrid").innerHTML = items.map(compareCardHTML).join(""); }
-  render();   // resynker avkrysningsstatusen på synlige kort
-}
-function openFromCompare(pid){
-  closeCompare();
-  let card = document.querySelector('.product[data-pid="' + pid + '"]');
-  if(!card){ pinnedPid = pid; render(); card = document.querySelector('.product[data-pid="' + pid + '"]'); }
-  if(card) openCard(card, { push:true, scroll:true });
-}
 
 async function toggle(btn){
   const card = btn.closest(".product");
@@ -1476,8 +1326,6 @@ function resetFilters(){
 window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
 window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=init;
 window.showMore=showMore;
-window.toggleCompare=toggleCompare; window.clearCompare=clearCompare; window.openCompare=openCompare;
-window.closeCompare=closeCompare; window.removeFromCompare=removeFromCompare; window.openFromCompare=openFromCompare;
 
 window.addEventListener("popstate", syncFromLocation);   // nettleser fram/tilbake
 init();
