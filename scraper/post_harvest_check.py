@@ -12,7 +12,7 @@ import sys
 
 import psycopg2
 
-TOLERANCE = int(os.environ.get("RESPLIT_TOLERANCE", "10"))
+TOLERANCE = int(os.environ.get("RESPLIT_TOLERANCE") or "10")
 
 
 def main() -> int:
