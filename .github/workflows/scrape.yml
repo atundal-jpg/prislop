@@ -3,7 +3,12 @@ name: scrape-prislop
 on:
   schedule:
     - cron: "0 */6 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      resplit_tolerance:
+        description: "Re-split-vaktens toleranse for |Δproducts| (default 10). Hev midlertidig ved planlagt merkebølge/merge — f.eks. 200."
+        required: false
+        default: "10"
 
 concurrency:
   group: scrape-prislop
@@ -47,6 +52,7 @@ jobs:
         working-directory: scraper
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          RESPLIT_TOLERANCE: ${{ inputs.resplit_tolerance }}
         run: python post_harvest_check.py
 
       - name: Send prisvarsler
