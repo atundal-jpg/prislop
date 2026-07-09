@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Prisløp — følg prisen på løpesko</title>
-<meta name="description" content="Prisløp følger prisutviklingen på løpesko fra norske nettbutikker, viser hvilke størrelser som faktisk er på lager, og varsler deg når prisen faller." />
+<meta name="description" content="Prisløp sammenligner priser på løpesko fra 8 norske nettbutikker, viser lager per størrelse — ikke bare om skoen finnes — og varsler deg på e-post når prisen faller." />
 <link rel="canonical" href="https://xn--prislp-fya.no/" />
 <meta name="robots" content="index,follow" />
 <meta name="theme-color" content="#136E68" />
@@ -14,14 +14,14 @@
 <meta property="og:locale" content="nb_NO" />
 <meta property="og:url" content="https://xn--prislp-fya.no/" />
 <meta property="og:title" content="Prisløp — følg prisen på løpesko" />
-<meta property="og:description" content="Sammenlign priser på løpesko fra norske nettbutikker, se hvilke størrelser som er på lager, og få varsel når prisen faller." />
+<meta property="og:description" content="Sammenlign priser på løpesko fra 8 norske nettbutikker, se hvilke størrelser som faktisk er på lager, og få varsel når prisen faller." />
 <meta property="og:image" content="https://xn--prislp-fya.no/og-image.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <!-- Twitter/X -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Prisløp — følg prisen på løpesko" />
-<meta name="twitter:description" content="Sammenlign priser på løpesko fra norske nettbutikker, se hvilke størrelser som er på lager, og få varsel når prisen faller." />
+<meta name="twitter:description" content="Sammenlign priser på løpesko fra 8 norske nettbutikker, se hvilke størrelser som faktisk er på lager, og få varsel når prisen faller." />
 <meta name="twitter:image" content="https://xn--prislp-fya.no/og-image.png" />
 <script type="application/ld+json">
 {
@@ -41,6 +41,37 @@
       "@id": "https://xn--prislp-fya.no/#org",
       "name": "Prisløp",
       "url": "https://xn--prislp-fya.no/"
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://xn--prislp-fya.no/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Hvordan finner Prisløp den laveste prisen på løpesko?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Prisløp henter priser fra norske nettbutikker jevnlig (hver 6. time) og viser laveste pris per modell på tvers av butikkene, alltid sortert på pris." }
+        },
+        {
+          "@type": "Question",
+          "name": "Viser Prisløp om min størrelse faktisk er på lager?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Ja. De fleste sider viser bare at en sko finnes — Prisløp viser lagerstatus per størrelse og butikk, oppdatert ved hver henting." }
+        },
+        {
+          "@type": "Question",
+          "name": "Hva skiller Prisløp fra andre prissammenligningssider?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Prisløp er spesialisert på løpesko med full prishistorikk og lagerstatus per størrelse på tvers av 8 norske butikker — ikke bare hvilken side som har laveste pris akkurat nå." }
+        },
+        {
+          "@type": "Question",
+          "name": "Er lenkene til butikkene annonselenker?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Noen av lenkene er annonselenker som kan gi Prisløp en liten provisjon. Det påvirker ikke prisen du betaler, og avgjør ikke rekkefølgen — den sorteres alltid på laveste pris." }
+        },
+        {
+          "@type": "Question",
+          "name": "Kan jeg få varsel når prisen faller?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Ja. Velg en sko, eventuelt en størrelse, og sett en prisgrense — Prisløp sender e-post når prisen når dit, eller når størrelsen er tilbake på lager." }
+        }
+      ]
     }
   ]
 }
@@ -116,6 +147,17 @@
   section{padding:64px 0}
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
   .sec-head h2{font-size:clamp(24px,3.4vw,34px)}
+
+  /* kategori-landingsside: intro + AEO-svar */
+  .kat-intro{border:1px solid var(--line);background:#fff;border-radius:14px;padding:20px 22px;margin-bottom:18px}
+  .kat-intro .kat-lede{margin:6px 0 0;font-size:15.5px;color:#2b332f;max-width:70ch}
+  .kat-intro .kat-aeo{margin:14px 0 0;padding:14px 16px;background:var(--petrol-soft);border-radius:10px;font-size:14.5px;color:#1c2a27}
+  .kat-intro .kat-aeo strong{font-family:var(--disp);font-weight:600;display:block;margin-bottom:4px}
+
+  /* attributt-filtre (karbonplate/vanntett/wide) */
+  .attrs{display:flex;gap:14px;flex-wrap:wrap;margin:2px 2px 14px}
+  .attr{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;color:#2b332f;cursor:pointer}
+  .attr input{width:16px;height:16px;accent-color:var(--petrol);cursor:pointer}
 
   /* controls */
   .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
@@ -231,6 +273,15 @@
     box-shadow:0 8px 30px rgba(0,0,0,.18);transition:opacity .25s,transform .25s;z-index:50;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+  /* faq */
+  .faqlist{display:flex;flex-direction:column;gap:10px}
+  .faqlist details{border:1px solid var(--line);background:#fff;border-radius:12px;padding:16px 18px}
+  .faqlist summary{font-family:var(--disp);font-weight:600;font-size:16px;cursor:pointer;list-style:none}
+  .faqlist summary::-webkit-details-marker{display:none}
+  .faqlist summary::before{content:"+ ";color:var(--petrol)}
+  .faqlist details[open] summary::before{content:"– "}
+  .faqlist p{margin:10px 0 0;font-size:14.5px;color:#444a47}
+
   /* footer */
   footer{border-top:1px solid var(--line);padding:40px 0 56px;color:var(--muted);font-size:13.5px}
   footer .disc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:24px;color:#444a47;max-width:62ch}
@@ -294,6 +345,8 @@
       <span class="eyebrow">Oppdateres hver 6. time</span>
     </div>
 
+    <div class="kat-intro" id="kat-intro" hidden></div>
+
     <div class="controls">
       <label class="search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -320,6 +373,11 @@
         <option value="name">Modell A–Å</option>
       </select>
     </div>
+    <div class="attrs" id="attrs">
+      <label class="attr"><input type="checkbox" id="f-carbon" /> Karbonplate</label>
+      <label class="attr"><input type="checkbox" id="f-waterproof" /> Vanntett</label>
+      <label class="attr"><input type="checkbox" id="f-wide" /> Wide/bred lest</label>
+    </div>
     <div class="countrow" id="countrow" aria-live="polite"></div>
 
     <div class="list" id="products"></div>
@@ -345,6 +403,24 @@
         <h3>Vi følger prisløpet</h3>
         <p>Sett en grense på prisen, eller en størrelse du venter på. Vi holder øye med prisen og sier fra på e-post idet den faller dit — eller dukker opp igjen.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="padding-top:8px">
+  <div class="wrap">
+    <div class="sec-head"><h2>Spørsmål &amp; svar</h2></div>
+    <div class="faqlist">
+      <details><summary>Hvordan finner Prisløp den laveste prisen på løpesko?</summary>
+        <p>Prisløp henter priser fra norske nettbutikker jevnlig (hver 6. time) og viser laveste pris per modell på tvers av butikkene, alltid sortert på pris.</p></details>
+      <details><summary>Viser Prisløp om min størrelse faktisk er på lager?</summary>
+        <p>Ja. De fleste sider viser bare at en sko finnes — Prisløp viser lagerstatus per størrelse og butikk, oppdatert ved hver henting.</p></details>
+      <details><summary>Hva skiller Prisløp fra andre prissammenligningssider?</summary>
+        <p>Prisløp er spesialisert på løpesko med full prishistorikk og lagerstatus per størrelse på tvers av 8 norske butikker — ikke bare hvilken side som har laveste pris akkurat nå.</p></details>
+      <details><summary>Er lenkene til butikkene annonselenker?</summary>
+        <p>Noen av lenkene er annonselenker som kan gi Prisløp en liten provisjon. Det påvirker ikke prisen du betaler, og avgjør ikke rekkefølgen — den sorteres alltid på laveste pris.</p></details>
+      <details><summary>Kan jeg få varsel når prisen faller?</summary>
+        <p>Ja. Velg en sko, eventuelt en størrelse, og sett en prisgrense — Prisløp sender e-post når prisen når dit, eller når størrelsen er tilbake på lager.</p></details>
     </div>
   </div>
 </section>
@@ -423,7 +499,7 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
-const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank" };
+const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false };
 
 // Spor 4: brukskategorier (subcategory i v_prislop_products). Etikettene
 // gjenbrukes i kort-badgen og som JSON-LD-category.
@@ -438,6 +514,52 @@ const KAT_LABELS = {
   bane:        "Bane & pigger"
 };
 
+/* SEO/AEO spor: kategori-landingssider (?kategori=<slug>). Title/desc/intro
+   er vinklet mot segment- og sesongklyngene fra søkeordsanalysen (8. juli) —
+   IKKE mot det generiske «beste løpesko»-ordet (eies av redaksjonelt). */
+const KAT_CONTENT = {
+  terreng: {
+    title: "Terrengsko / trail — priser og lager | Prisløp",
+    desc:  "Sammenlign priser på terrengsko og trail-løpesko fra norske nettbutikker. Se hvilke størrelser som er på lager før vinter- og stisesongen, og få varsel når prisen faller.",
+    intro: "Terrengsko er den største kategorien hos oss, med modeller for alt fra lette stier til vått, steinete og vinterføre. Fellesnevneren er godt grep og mer beskyttelse enn en vanlig asfaltsko. Under ser du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker — ikke bare hvorvidt skoen finnes, men om <em>din</em> størrelse faktisk er inne akkurat nå."
+  },
+  daily: {
+    title: "Daily trainer — priser og lager | Prisløp",
+    desc:  "Sammenlign priser på daily trainers — allroundsko for de fleste treningsøktene. Se lager per størrelse fra norske nettbutikker og få varsel når prisen faller.",
+    intro: "Daily trainers er allroundskoen de fleste løpere bruker til flertallet av øktene — god nok demping til lange turer, nok respons til at tempoøkter også går greit. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  demping: {
+    title: "Sko med maks demping & restitusjon — priser | Prisløp",
+    desc:  "Sammenlign priser på maks-dempede løpesko for restitusjonsøkter og lange turer. Se lager per størrelse fra norske nettbutikker og få prisvarsel.",
+    intro: "Maks demping er kategorien for rolige økter, restitusjon og lange, tunge treningsdager der beina trenger avlastning. Tykk mellomsåle, myk landing. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  konkurranse: {
+    title: "Konkurransesko med karbonplate — priser | Prisløp",
+    desc:  "Sammenlign priser på konkurransesko, inkludert modeller med karbonplate. Se lager per størrelse fra norske nettbutikker og få varsel når prisen faller.",
+    intro: "Konkurransesko er bygget for å være raske på løpsdagen — lett vekt og ofte karbonplate for økt fjæring. Bruk karbonplate-filteret under for å isolere de rendyrkede platesko. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  stabilitet: {
+    title: "Stabilitetssko — priser og lager | Prisløp",
+    desc:  "Sammenlign priser på stabilitetssko med støtte mot innoversig (pronasjon). Se lager per størrelse fra norske nettbutikker og få prisvarsel.",
+    intro: "Stabilitetssko gir ekstra støtte til løpere som ønsker eller trenger hjelp mot innoversig i steget. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  tempo: {
+    title: "Tempo & supertrainer — priser og lager | Prisløp",
+    desc:  "Sammenlign priser på tempo- og supertrainer-løpesko for fart og intervaller. Se lager per størrelse fra norske nettbutikker og få prisvarsel.",
+    intro: "Tempo- og supertrainer-sko ligger mellom daily trainer og konkurransesko — lettere og mer responsive, beregnet på fartsøkter og intervaller uten å være rene løpssko. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  mosjon: {
+    title: "Løpesko for mosjon & hverdag — priser | Prisløp",
+    desc:  "Sammenlign priser på løpesko for mosjon, jogging og nybegynnere. Se lager per størrelse fra norske nettbutikker og få prisvarsel.",
+    intro: "Mosjon & hverdag er kategorien for deg som løper for helsa, kommer i gang, eller vil ha en pålitelig sko uten å tenke for mye på spesifikasjoner. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  },
+  bane: {
+    title: "Baneko / piggsko — priser og lager | Prisløp",
+    desc:  "Sammenlign priser på banesko og piggsko for friidrett. Se lager per størrelse fra norske nettbutikker og få prisvarsel.",
+    intro: "Bane & pigger dekker sko beregnet for friidrettsbanen — lette, ofte piggutrustede modeller til intervalltrening og løp. Her finner du gjeldende priser og lagerstatus per størrelse på tvers av norske nettbutikker."
+  }
+};
+
 const SHOE_SVG = '<svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
   + '<path d="M5 41c0-3 2-5 6-6 6-1 9-4 13-9 3-4 6-6 9-5 2 1 2 3 1 6 4-1 9 0 15 3 6 3 9 6 9 10 0 3-2 4-6 4H9c-3 0-4-1-4-3z" fill="#136E68"/>'
   + '<path d="M7 44h49" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
@@ -450,6 +572,8 @@ const CANON_BASE = "https://xn--prislp-fya.no/";   // punycode: ALLTID -fya (ald
 const HOME_URL   = CANON_BASE;
 let PRODUCT_BY_ID = {};
 const productUrl = pid => CANON_BASE + "?product=" + encodeURIComponent(pid);
+/* ---- SEO/AEO · kategori-landingssider: ?kategori=<slug> ---- */
+const kategoriUrl = slug => CANON_BASE + "?kategori=" + encodeURIComponent(slug);
 
 /* ---- paginering: kort forsideliste (topp N etter rank_score), «Vis flere» for resten ---- */
 const PAGE_SIZE = 18;
@@ -532,6 +656,72 @@ function removeProductJsonLd(){
   if(s) s.remove();
 }
 
+/* ---- SEO/AEO · kategori-landingssider: CollectionPage + ett AEO-svar (FAQPage) ---- */
+function cheapestInCategory(slug){
+  let best = null;
+  PRODUCTS.forEach(p => {
+    if(p.subcategory !== slug || p.from_price == null) return;
+    if(!best || Number(p.from_price) < Number(best.from_price)) best = p;
+  });
+  return best;
+}
+function kategoriAeoAnswer(slug){
+  const label = KAT_LABELS[slug] || slug;
+  const best = cheapestInCategory(slug);
+  if(!best) return "Vi har ikke nok data på " + label.toLowerCase() + " akkurat nå — sjekk igjen om litt.";
+  return "Akkurat nå er billigste " + label.toLowerCase() + " hos Prisløp " + best.brand + " " + best.model
+    + " fra " + nok(best.from_price) + " kr" + (best.n_stores ? " (" + best.n_stores + " butikker sammenlignet)" : "")
+    + ". Prisene oppdateres hver 6. time.";
+}
+function kategoriJsonLd(slug){
+  const label = KAT_LABELS[slug]; if(!label) return null;
+  const url = kategoriUrl(slug);
+  const items = currentList().slice(0, 18);
+  const question = "Hva er billigst innen " + label.toLowerCase() + " hos Prisløp nå?";
+  const answer = kategoriAeoAnswer(slug);
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        "@id": url + "#page",
+        "url": url,
+        "name": label + " — priser og lager | Prisløp",
+        "isPartOf": { "@id": CANON_BASE + "#website" },
+        "mainEntity": {
+          "@type": "ItemList",
+          "itemListElement": items.map((p,i) => ({
+            "@type": "ListItem", "position": i+1,
+            "url": productUrl(p.product_id), "name": p.brand + " " + p.model
+          }))
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": url + "#faq",
+        "mainEntity": [{
+          "@type": "Question", "name": question,
+          "acceptedAnswer": { "@type": "Answer", "text": answer }
+        }]
+      }
+    ]
+  };
+}
+function injectKategoriJsonLd(slug){
+  removeKategoriJsonLd();
+  const node = kategoriJsonLd(slug);
+  if(!node) return;
+  const s = document.createElement("script");
+  s.type = "application/ld+json";
+  s.id = "kategori-jsonld";
+  s.textContent = JSON.stringify(node);
+  document.head.appendChild(s);
+}
+function removeKategoriJsonLd(){
+  const s = el("kategori-jsonld");
+  if(s) s.remove();
+}
+
 const metaC   = sel => { const n = document.querySelector(sel); return n ? (n.getAttribute("content") || n.getAttribute("href") || "") : ""; };
 const setAttr = (sel, attr, val) => { const n = document.querySelector(sel); if(n) n.setAttribute(attr, val); };
 
@@ -575,10 +765,49 @@ function applyHomeMeta(){
   setAttr('meta[name="twitter:title"]',      "content", HEAD_DEFAULTS.twTitle);
   setAttr('meta[name="twitter:description"]', "content", HEAD_DEFAULTS.twDesc);
   removeProductJsonLd();
+  removeKategoriJsonLd();
+  renderKatIntro(null);
 }
-// hold URL-en på «hjem» når brukeren filtrerer/søker (render() river uansett åpne kort)
-function ensureHomeUrl(){
-  if(new URLSearchParams(location.search).get("product")){
+function applyKategoriMeta(slug){
+  const c = KAT_CONTENT[slug]; if(!c) return;
+  const url = kategoriUrl(slug);
+  setAttr('link[rel="canonical"]', "href", url);
+  setAttr('meta[property="og:url"]', "content", url);
+  document.title = c.title;
+  setAttr('meta[name="description"]',        "content", c.desc);
+  setAttr('meta[property="og:title"]',       "content", c.title);
+  setAttr('meta[property="og:description"]', "content", c.desc);
+  setAttr('meta[name="twitter:title"]',      "content", c.title);
+  setAttr('meta[name="twitter:description"]', "content", c.desc);
+  removeProductJsonLd();
+  injectKategoriJsonLd(slug);
+  renderKatIntro(slug);
+}
+/* Synlig intro + AEO-svar over kortlista — må matche det som ligger i JSON-LD,
+   siden Google/AI-søk forventer at FAQ-innhold faktisk vises på siden. */
+function renderKatIntro(slug){
+  const box = el("kat-intro");
+  if(!box) return;
+  const c = slug ? KAT_CONTENT[slug] : null;
+  if(!c){ box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  box.innerHTML =
+      '<p class="eyebrow">' + esc(KAT_LABELS[slug] || "") + '</p>'
+    + '<p class="kat-lede">' + c.intro + '</p>'
+    + '<p class="kat-aeo"><strong>' + esc("Hva er billigst innen " + (KAT_LABELS[slug]||"").toLowerCase() + " hos Prisløp nå?") + '</strong><br>'
+    + esc(kategoriAeoAnswer(slug)) + '</p>';
+}
+/* Holder URL-en synkronisert med filters.kat når brukeren filtrerer/søker
+   (render() river uansett åpne kort). Kategori-valget er den eneste filteret
+   som får sin egen URL/landingsside — resten (merke/størrelse/søk/sortering)
+   er kun klient-side forfining, samme mønster som før spor 4. */
+function syncListUrl(){
+  const params = new URLSearchParams(location.search);
+  if(filters.kat && KAT_LABELS[filters.kat]){
+    const url = kategoriUrl(filters.kat);
+    if(location.href !== url) history.replaceState({}, "", url);
+    applyKategoriMeta(filters.kat);
+  }else if(params.get("product") || params.get("kategori")){
     history.replaceState({}, "", HOME_URL);
     applyHomeMeta();
   }
@@ -603,14 +832,22 @@ function openFromUrl(){
 }
 // synk DOM mot URL ved fram/tilbake i nettleseren
 function syncFromLocation(){
-  const pid = new URLSearchParams(location.search).get("product");
+  const params = new URLSearchParams(location.search);
+  const pid = params.get("product");
   if(pid && PRODUCT_BY_ID[pid]){
     let card = document.querySelector('.product[data-pid="' + pid + '"]');
     if(!card){ pinnedPid = pid; render(); card = document.querySelector('.product[data-pid="' + pid + '"]'); }
     if(card){ openCard(card, { push:false, scroll:false }); return; }
   }
   document.querySelectorAll(".product.open").forEach(closeCard);
-  applyHomeMeta();
+  const slug = params.get("kategori");
+  if(slug && KAT_LABELS[slug]){
+    filters.kat = slug; const sel = el("f-kat"); if(sel) sel.value = slug;
+    resetPaging(); render(); applyKategoriMeta(slug);
+  }else{
+    if(filters.kat){ filters.kat = ""; const sel = el("f-kat"); if(sel) sel.value = ""; resetPaging(); render(); }
+    applyHomeMeta();
+  }
 }
 
 async function init(){
@@ -629,8 +866,21 @@ async function init(){
   buildFilterOptions();
   await buildHeroStats();
   bindControls();
+  applyKategoriFromUrl();
   render();
-  openFromUrl();
+  if(new URLSearchParams(location.search).get("product")){
+    openFromUrl();
+  }else if(filters.kat){
+    applyKategoriMeta(filters.kat);
+  }
+}
+// ved sidelast: forhåndsvelg kategori-filteret hvis ?kategori=<slug> er en gyldig slug
+function applyKategoriFromUrl(){
+  const slug = new URLSearchParams(location.search).get("kategori");
+  if(slug && KAT_LABELS[slug]){
+    filters.kat = slug;
+    const sel = el("f-kat"); if(sel) sel.value = slug;
+  }
 }
 
 async function buildHeroStats(){
@@ -665,19 +915,22 @@ async function fetchSizeOptions(){
 
 function bindControls(){
   let t;
-  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); resetPaging(); ensureHomeUrl(); render(); }, 140); });
-  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
-  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
-  el("f-kat").addEventListener("change", e => { filters.kat = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
-  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; resetPaging(); ensureHomeUrl(); render(); });
+  el("q").addEventListener("input", e => { clearTimeout(t); t = setTimeout(()=>{ filters.q = e.target.value.trim().toLowerCase(); resetPaging(); syncListUrl(); render(); }, 140); });
+  el("f-brand").addEventListener("change", e => { filters.brand = e.target.value; resetPaging(); syncListUrl(); render(); });
+  el("f-gender").addEventListener("change", e => { filters.gender = e.target.value; resetPaging(); syncListUrl(); render(); });
+  el("f-kat").addEventListener("change", e => { filters.kat = e.target.value; resetPaging(); syncListUrl(); render(); });
+  el("f-sort").addEventListener("change", e => { filters.sort = e.target.value; resetPaging(); syncListUrl(); render(); });
   el("f-size").addEventListener("change", async e => {
     filters.size = e.target.value;
     if(filters.size && !sizeFilterCache[filters.size]){
       try{ sizeFilterCache[filters.size] = await productIdsWithSize(filters.size); }
       catch(err){ sizeFilterCache[filters.size] = null; }
     }
-    resetPaging(); ensureHomeUrl(); render();
+    resetPaging(); syncListUrl(); render();
   });
+  el("f-carbon").addEventListener("change",     e => { filters.carbon     = e.target.checked; resetPaging(); syncListUrl(); render(); });
+  el("f-waterproof").addEventListener("change", e => { filters.waterproof = e.target.checked; resetPaging(); syncListUrl(); render(); });
+  el("f-wide").addEventListener("change",       e => { filters.wide       = e.target.checked; resetPaging(); syncListUrl(); render(); });
 }
 
 function currentList(){
@@ -685,6 +938,9 @@ function currentList(){
   if(filters.brand)  list = list.filter(p => p.brand === filters.brand);
   if(filters.gender) list = list.filter(p => p.gender === filters.gender);
   if(filters.kat)    list = list.filter(p => p.subcategory === filters.kat);
+  if(filters.carbon)     list = list.filter(p => p.carbon_plate);
+  if(filters.waterproof) list = list.filter(p => p.waterproof);
+  if(filters.wide)       list = list.filter(p => p.wide);
   if(filters.q){
     list = list.filter(p => ((p.brand||"")+" "+(p.model||"")).toLowerCase().includes(filters.q));
   }
@@ -703,7 +959,7 @@ function currentList(){
 
 function render(){
   const list = currentList();
-  const anyFilter = filters.q||filters.brand||filters.gender||filters.size;
+  const anyFilter = filters.q||filters.brand||filters.gender||filters.size||filters.carbon||filters.waterproof||filters.wide;
 
   let shown = list.slice(0, visibleCount);
   // dyplenket produkt utenfor synlig side: fest øverst så URL-en alltid rendrer kortet
@@ -1036,8 +1292,10 @@ function resetFilters(){
   filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
   el("f-kat").value=""; filters.kat="";
+  filters.carbon=false; filters.waterproof=false; filters.wide=false;
+  el("f-carbon").checked=false; el("f-waterproof").checked=false; el("f-wide").checked=false;
   resetPaging();
-  ensureHomeUrl();
+  syncListUrl();
   render();
 }
 window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
