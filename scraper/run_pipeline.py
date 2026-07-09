@@ -39,7 +39,7 @@ from fetch import Fetcher
 # NB: Alle 8 aktive butikker kjører take-all/cachede discovery-moduser, så
 # MODELS-listene er i praksis INERTE for discovery (hele merkekatalogen hentes
 # uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
-BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun"]
+BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun", "New Balance"]
 STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss"]   # de feed-løse butikkene
 
 MODELS = {
@@ -88,6 +88,14 @@ MODELS = {
     ],
     "Kiprun": [
         "KD900X", "KS900", "KD800", "KS500 2", "KD500 3",
+    ],
+    # New Balance: kun verifisert hos Foss (sitemap-probe 5. juli: 25 treff på
+    # /new-balance/<id>/) — se discovery.py. Take-all der (sitemap-regex), så
+    # denne listen er inert akkurat som de andre, ren dok/seed for ev. flere
+    # butikker (probe_brands.py sjekker resten 9. juli).
+    "New Balance": [
+        "1080v14", "880v15", "Rebel v5", "Fresh Foam X More v5",
+        "FuelCell SuperComp Elite 4", "FuelCell Propel v5", "Vongo v6",
     ],
 }
 
