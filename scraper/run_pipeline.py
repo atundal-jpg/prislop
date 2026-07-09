@@ -39,7 +39,7 @@ from fetch import Fetcher
 # NB: Alle 8 aktive butikker kjører take-all/cachede discovery-moduser, så
 # MODELS-listene er i praksis INERTE for discovery (hele merkekatalogen hentes
 # uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
-BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun", "New Balance"]
+BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun", "New Balance", "Brooks", "Mizuno"]
 STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss"]   # de feed-løse butikkene
 
 MODELS = {
@@ -89,13 +89,22 @@ MODELS = {
     "Kiprun": [
         "KD900X", "KS900", "KD800", "KS500 2", "KD500 3",
     ],
-    # New Balance: kun verifisert hos Foss (sitemap-probe 5. juli: 25 treff på
-    # /new-balance/<id>/) — se discovery.py. Take-all der (sitemap-regex), så
-    # denne listen er inert akkurat som de andre, ren dok/seed for ev. flere
-    # butikker (probe_brands.py sjekker resten 9. juli).
+    # New Balance: Foss (skrudd på 9. juli) + Torshov (probe_brands 9. juli:
+    # 30 treff). Take-all begge steder, så listen er inert, ren dok/seed.
     "New Balance": [
         "1080v14", "880v15", "Rebel v5", "Fresh Foam X More v5",
         "FuelCell SuperComp Elite 4", "FuelCell Propel v5", "Vongo v6",
+    ],
+    # Brooks: Torshov + Brukås (probe_brands 9. juli). Take-all begge steder.
+    "Brooks": [
+        "Ghost 17", "Ghost Max 2", "Glycerin Max 2", "Glycerin GTS",
+        "Hyperion Elite 4", "Adrenaline GTS 24", "Cascadia 19",
+    ],
+    # Mizuno: Torshov + Intersport + Sport 1 + Löplabbet + XXL (probe_brands
+    # 9. juli — desidert bredest dekning av dagens funn). Take-all overalt.
+    "Mizuno": [
+        "Wave Rider 30", "Wave Rider 29", "Wave Rebellion Flash 3",
+        "Wave Sky 8", "Wave Horizon 9", "Wave Duel 4", "Wave Inspire 21",
     ],
 }
 
