@@ -42,7 +42,8 @@ _BRAND_FIX = {"asics": "Asics", "nike": "Nike", "adidas": "adidas",
 #  - Nike-markedsføringsprefikser («Air Zoom Pegasus 42», «Zoomx Vaporfly 4»,
 #    «Reactx Pegasus Trail 5», «Air Winflo 11»). NB: bare «zoom» strippes
 #    ALDRI alene — «Zoom Fly» er et ekte modellnavn («air zoom» tas som par).
-_LEAD_BRAND_TOKENS = {"asics", "adidas", "nike", "hoka", "saucony", "puma", "kiprun"}
+_LEAD_BRAND_TOKENS = {"asics", "adidas", "nike", "hoka", "saucony", "puma", "kiprun",
+                      "mizuno", "brooks"}  # bølge 3, 9. juli: Sport 1/Intersport skriver «Mizuno Neo Vista 2»
 _LEAD_DROP_TOKENS = {"zoomx", "reactx"}
 
 
@@ -56,6 +57,9 @@ def _strip_lead_tokens(toks: list[str]) -> list[str]:
             continue
         if t == "air":
             toks = toks[2:] if len(toks) >= 2 and toks[1] == "zoom" else toks[1:]
+            continue
+        if t == "new" and len(toks) >= 2 and toks[1] == "balance":  # to-token merkeprefiks
+            toks = toks[2:]
             continue
         break
     return toks
@@ -149,6 +153,10 @@ def norm_model(model: str) -> str:
     bar Asics-linje mangler det."""
     m = (model or "").lower()
     m = re.sub(r"[\"'«»„“”|]", "", m)              # anførselstegn/pipe fra butikk-SEO-navn
+    # Parentes-kjønnssuffiks (bølge 3, 9. juli): Sport 1/Intersport skriver
+    # «Wave Horizon 9(M)» / «Neo Vista 2(W)» / «Neo Accera(U)» — samme sko som
+    # uten suffikset. Kjønnet fanges separat i split_model_gender.
+    m = re.sub(r"\(\s*(m|w|u)\s*\)", " ", m)
     m = re.sub(r"[\-/,]", " ", m)
     m = re.sub(r"\s+", " ", m).strip()
     # Gore-Tex == GTX: butikker veksler mellom skrivemåtene (XXL: "Gore-Tex",
@@ -217,6 +225,11 @@ def split_model_gender(model: str) -> tuple[str, str | None]:
     «M Mach 6» -> ('Mach 6', 'herre'), «WMNS Air Winflo 11» -> (…, 'dame')."""
     s = (model or "").strip()
     lead_gender = None
+    # Parentes-kjønnssuffiks («Wave Horizon 9(M)», «Neo Accera(U)») — bølge 3.
+    pm = re.search(r"\(\s*(M|W|U)\s*\)\s*$", s, re.I)
+    if pm:
+        lead_gender = _LEAD_GENDER.get(pm.group(1).lower())
+        s = s[:pm.start()].strip()
     m = re.match(r"^(M|W|U|WMNS|Mens|Womens)\b[\s-]*", s, re.I)
     if m:
         lead_gender = _LEAD_GENDER.get(m.group(1).lower())
