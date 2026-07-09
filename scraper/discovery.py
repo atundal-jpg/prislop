@@ -344,12 +344,13 @@ STORES = {
         "sitemap": "https://www.foss-sport.no/sitemap.xml",
         # Produkt-URL-ene er /<merke>/<id>/… — merket velges via prod_re.
         # foss_parser leser brand fra JSON-LD (generalisert 5. juli). Sitemap-
-        # dekning fra probe_brands: saucony 40 · kiprun 10 (+ new-balance 25,
-        # utenfor denne bølgen).
+        # dekning fra probe_brands: saucony 40 · kiprun 10 · new-balance 25
+        # (skrudd på 9. juli — samme mønster som asics/saucony/kiprun under).
         "by_brand": {
-            "asics":   {"prod_re": re.compile(r"/asics/\d+/", re.I)},
-            "saucony": {"prod_re": re.compile(r"/saucony/\d+/", re.I)},
-            "kiprun":  {"prod_re": re.compile(r"/kiprun/\d+/", re.I)},
+            "asics":       {"prod_re": re.compile(r"/asics/\d+/", re.I)},
+            "saucony":     {"prod_re": re.compile(r"/saucony/\d+/", re.I)},
+            "kiprun":      {"prod_re": re.compile(r"/kiprun/\d+/", re.I)},
+            "new balance": {"prod_re": re.compile(r"/new-balance/\d+/", re.I)},
         },
         "adapter": _foss,
     },
