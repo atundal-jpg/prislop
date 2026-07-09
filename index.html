@@ -154,10 +154,15 @@
   .kat-intro .kat-aeo{margin:14px 0 0;padding:14px 16px;background:var(--petrol-soft);border-radius:10px;font-size:14.5px;color:#1c2a27}
   .kat-intro .kat-aeo strong{font-family:var(--disp);font-weight:600;display:block;margin-bottom:4px}
 
-  /* attributt-filtre (karbonplate/vanntett/wide) */
-  .attrs{display:flex;gap:14px;flex-wrap:wrap;margin:2px 2px 14px}
-  .attr{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;color:#2b332f;cursor:pointer}
-  .attr input{width:16px;height:16px;accent-color:var(--petrol);cursor:pointer}
+  /* attributt-filtre (karbonplate/vanntett/wide) — egen filterdimensjon,
+     visuelt skilt fra kategori/merke-dropdownene med en liten etikett */
+  .attrs{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin:2px 2px 16px;padding-top:14px;border-top:1px dashed var(--line)}
+  .attrs-label{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+  .attr-pill{appearance:none;cursor:pointer;font-family:var(--mono);font-size:12.5px;color:#2b332f;
+    background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;transition:background .12s,border-color .12s,color .12s}
+  .attr-pill:hover{border-color:var(--petrol)}
+  .attr-pill[aria-pressed="true"]{background:var(--petrol);border-color:var(--petrol);color:#fff}
+  .attr-pill:focus-visible{outline:2.5px solid var(--petrol);outline-offset:1px}
 
   /* controls */
   .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
@@ -374,9 +379,10 @@
       </select>
     </div>
     <div class="attrs" id="attrs">
-      <label class="attr"><input type="checkbox" id="f-carbon" /> Karbonplate</label>
-      <label class="attr"><input type="checkbox" id="f-waterproof" /> Vanntett</label>
-      <label class="attr"><input type="checkbox" id="f-wide" /> Wide/bred lest</label>
+      <span class="attrs-label">Egenskaper</span>
+      <button type="button" class="attr-pill" id="f-carbon" aria-pressed="false">Karbonplate</button>
+      <button type="button" class="attr-pill" id="f-waterproof" aria-pressed="false">Vanntett</button>
+      <button type="button" class="attr-pill" id="f-wide" aria-pressed="false">Wide/bred lest</button>
     </div>
     <div class="countrow" id="countrow" aria-live="polite"></div>
 
@@ -928,9 +934,18 @@ function bindControls(){
     }
     resetPaging(); syncListUrl(); render();
   });
-  el("f-carbon").addEventListener("change",     e => { filters.carbon     = e.target.checked; resetPaging(); syncListUrl(); render(); });
-  el("f-waterproof").addEventListener("change", e => { filters.waterproof = e.target.checked; resetPaging(); syncListUrl(); render(); });
-  el("f-wide").addEventListener("change",       e => { filters.wide       = e.target.checked; resetPaging(); syncListUrl(); render(); });
+  bindAttrPill("f-carbon",     v => filters.carbon = v);
+  bindAttrPill("f-waterproof", v => filters.waterproof = v);
+  bindAttrPill("f-wide",       v => filters.wide = v);
+}
+function bindAttrPill(id, apply){
+  const btn = el(id);
+  btn.addEventListener("click", () => {
+    const next = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", next ? "true" : "false");
+    apply(next);
+    resetPaging(); syncListUrl(); render();
+  });
 }
 
 function currentList(){
@@ -1293,7 +1308,7 @@ function resetFilters(){
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
   el("f-kat").value=""; filters.kat="";
   filters.carbon=false; filters.waterproof=false; filters.wide=false;
-  el("f-carbon").checked=false; el("f-waterproof").checked=false; el("f-wide").checked=false;
+  ["f-carbon","f-waterproof","f-wide"].forEach(id => el(id).setAttribute("aria-pressed","false"));
   resetPaging();
   syncListUrl();
   render();
