@@ -116,6 +116,13 @@ STORES = {
             # navnevarianter (Hoka/HOKA/hoka/Hoka One One… og Saucony/SAUCONY/
             # saucony) mot /c/142010 — XXL fører dem ikke i Løpesko-kategorien.
             # Ikke et facet-navn-problem; re-prob ved sortiments-endring.
+            # probe_brands 9. juli: mizuno 27 ekte produktlenker (eSales-API
+            # ga ingen treff, men fallback side-1-skrap fant dem — samme
+            # take_all/link_re-mekanisme som resten av XXL-konfigen).
+            "mizuno": {
+                "brand_filter": "Mizuno",
+                "search_url": lambda q: "https://www.xxl.no/herre/sko/lopesko-herre/mizuno/c/140202?f.brand=Mizuno",
+            },
         },
         # Apptus eSales: henter ALLE produkt-URL-er (paginert), ikke bare side 1.
         "mode": "esales_api",
@@ -176,6 +183,24 @@ STORES = {
                 "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/kiprun-lopesko",
                 "link_re": re.compile(r"/lop/lopesko/vare-merker/kiprun-lopesko/[a-z0-9-]+", re.I),
             },
+            # probe_brands 9. juli: brooks 53 · mizuno 28 · new-balance 30 —
+            # alle ekte GraphQL-treff (ikke fallback-skrap), samme cat_slug-
+            # mønster som resten.
+            "brooks": {
+                "cat_slug": "brooks-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/brooks-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/brooks-lopesko/[a-z0-9-]+", re.I),
+            },
+            "mizuno": {
+                "cat_slug": "mizuno-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/mizuno-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/mizuno-lopesko/[a-z0-9-]+", re.I),
+            },
+            "new balance": {
+                "cat_slug": "new-balance-lopesko",
+                "search_url": lambda q: "https://www.torshovsport.no/lop/lopesko/vare-merker/new-balance-lopesko",
+                "link_re": re.compile(r"/lop/lopesko/vare-merker/new-balance-lopesko/[a-z0-9-]+", re.I),
+            },
         },
         "mode": "jetshop_api",
         "api": {
@@ -226,6 +251,11 @@ STORES = {
                 "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=NIKE"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-[a-z]{2}\d{4,5}/?($|\?)", re.I),
             },
+            # probe_brands 9. juli: mizuno 69 — kodeformat j1g[bokstav]#### (j1gd2503).
+            "mizuno": {
+                "listing_urls": ["https://www.intersport.no/sko/lopesko?Brand=MIZUNO"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-j1g[a-z]\d{4}/?($|\?)", re.I),
+            },
         },
         "adapter": _intersport,
     },
@@ -255,6 +285,11 @@ STORES = {
             "hoka": {
                 "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=HOKA"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-\d{7}/?($|\?)", re.I),
+            },
+            # probe_brands 9. juli: mizuno 60 — samme kodeformat som Intersport.
+            "mizuno": {
+                "listing_urls": ["https://www.sport1.no/sko/lopesko?Brand=MIZUNO"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-j1g[a-z]\d{4}/?($|\?)", re.I),
             },
         },
         "adapter": _sport1,
@@ -290,6 +325,12 @@ STORES = {
             "puma": {
                 "listing_urls": ["https://loplabbet.no/lopesko?Brand=PUMA"],
                 "marker_re": re.compile(r"/[a-z0-9-]+-\d{6}/?($|\?)", re.I),
+            },
+            # probe_brands 9. juli: mizuno ~10 ekte treff (samme kodeformat,
+            # minus 2 navigasjonslenker som støy i selve proben).
+            "mizuno": {
+                "listing_urls": ["https://loplabbet.no/lopesko?Brand=MIZUNO"],
+                "marker_re": re.compile(r"/[a-z0-9-]+-j1g[a-z]\d{4}/?($|\?)", re.I),
             },
         },
         "adapter": _loplabbet,
@@ -328,6 +369,7 @@ STORES = {
         "by_brand": {
             "asics":   {"brand_re": re.compile(r"/asics-[a-z0-9-]+", re.I)},
             "saucony": {"brand_re": re.compile(r"/saucony-[a-z0-9-]+", re.I)},  # probe: 4 lenker
+            "brooks":  {"brand_re": re.compile(r"/brooks-[a-z0-9-]+", re.I)},   # probe_brands 9. juli: 10 lenker (side 1)
         },
         "adapter": _brukas,
         "aggregate": brukas_parser.aggregate,
