@@ -23,18 +23,18 @@ CLASSIFY_SQL = r"""
 update prislop.products set subcategory =
   case
     when model ~* '(dragonfly|maxfly|victory 2|superfly elite|high jump|long jump|triple jump|lj elite|javelin|zoom sd|zoom rival|evospeed|prime sp|sinister|berserker|avanti|ambition)' then 'bane'
-    when model ~* '(trail|terrex|trabuco|speedgoat|torrent|zinal|mafate|tecton|peregrine|pergrine|xodus|zegama|wildhorse|ultrafly|juniper|acg|kipsummit|metafuji|fuji|sonoma|endorphin rift|\matr\M)'
+    when model ~* '(trail|terrex|trabuco|speedgoat|torrent|zinal|mafate|tecton|peregrine|pergrine|xodus|zegama|wildhorse|ultrafly|juniper|acg|kipsummit|metafuji|fuji|sonoma|endorphin rift|\matr\M|cascadia|caldera|catamount|wave daichi|wave ibuki|hierro)'
       or (brand = 'Hoka' and model ~* 'challenger') then 'terreng'
-    when model ~* '(vaporfly|alphafly|adios|prime x|metaspeed|endorphin pro|endorphin elite|endorphin edge|fast-r|fast-fwd|fast-rb|nitro elite|cielo|rocket x|carbon x|takumi|streakfly|kipstorm (elite|lab|challenger))' then 'konkurranse'
-    when model ~* '(zoom fly|magic speed|boston|endorphin speed|mach x|evo sl|adizero sl|kinvara|superblast|megablast|sonicblast|endorphin trainer|pegasus turbo|deviate|liberate|kipstorm tempo|noosa)' then 'tempo'
-    when model ~* '(kayano|gt-1000|gt-2000|structure|guide|arahi|gaviota|omni|hurricane|tempus|foreverrun|infinity|solar ?control|phoenix)' then 'stabilitet'
-    when model ~* '(nimbus|bondi|triumph|vomero|invincible|magmax|magnify|glideride|kinsei|skyward|stinson|ultraboost|kipride max|endorphin shift|adistar|hyperboost|supernova prima|comfortglide|tide|4dfwd|switch fwd)' then 'demping'
-    when model ~* '(pegasus|cumulus|novablast|dynablast|clifton|mach|ride|velocity|winflo|supernova|kipride|skyflow|rincon|endorphin azura|run xx|solarglide|solar glide|propio)' then 'daily'
+    when model ~* '(vaporfly|alphafly|adios|prime x|metaspeed|endorphin pro|endorphin elite|endorphin edge|fast-r|fast-fwd|fast-rb|nitro elite|cielo|rocket x|carbon x|takumi|streakfly|kipstorm (elite|lab|challenger)|hyperion elite|fuelcell supercomp elite)' then 'konkurranse'
+    when model ~* '(zoom fly|magic speed|boston|endorphin speed|mach x|evo sl|adizero sl|kinvara|superblast|megablast|sonicblast|endorphin trainer|pegasus turbo|deviate|liberate|kipstorm tempo|noosa|hyperion|wave rebellion|fuelcell rebel|fuelcell supercomp)' then 'tempo'
+    when model ~* '(kayano|gt-1000|gt-2000|structure|guide|arahi|gaviota|omni|hurricane|tempus|foreverrun|infinity|solar ?control|phoenix|wave horizon|wave inspire|wave equate|adrenaline gts|glycerin gts|\mariel\M|\mbeast\M)' then 'stabilitet'
+    when model ~* '(nimbus|bondi|triumph|vomero|invincible|magmax|magnify|glideride|kinsei|skyward|stinson|ultraboost|kipride max|endorphin shift|adistar|hyperboost|supernova prima|comfortglide|tide|4dfwd|switch fwd|ghost max|glycerin|hyperwarp|wave sky|wave serene|wave skyrise|1080v|revel max|neo zen)' then 'demping'
+    when model ~* '(pegasus|cumulus|novablast|dynablast|clifton|mach|ride|velocity|winflo|supernova|kipride|skyflow|rincon|endorphin azura|run xx|solarglide|solar glide|propio|ghost|wave kizuna|neo vista|neo accera|revel)' then 'daily'
     when model ~* '(runfalcon|galaxy|duramo|questar|response|revolution|downshifter|quest|run defy|interact|journey|excite|flux|pulse|flare|axon|lancer|surge|versablast|kawana|kinjo|skyrocket)' then 'mosjon'
     else null
   end;
 update prislop.products set carbon_plate =
-  model ~* '(vaporfly|alphafly|adios pro|prime x|metaspeed|endorphin pro|endorphin elite|endorphin edge|fast-r|nitro elite|cielo|rocket x|carbon x|zoom fly|magic speed|deviate|tecton|metafuji|kipstorm (elite|lab|challenger))';
+  model ~* '(vaporfly|alphafly|adios pro|prime x|metaspeed|endorphin pro|endorphin elite|endorphin edge|fast-r|nitro elite|cielo|rocket x|carbon x|zoom fly|magic speed|deviate|tecton|metafuji|kipstorm (elite|lab|challenger)|hyperion elite|fuelcell supercomp elite|wave rebellion)';
 update prislop.products set waterproof =
   model ~* '(gtx|gore-tex|\mwtr\M|runshield|rain\.rdy|cold\.rdy|waterproof)';
 update prislop.products set wide = model ~* '\mwide\M';
