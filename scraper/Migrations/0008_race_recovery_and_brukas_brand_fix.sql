@@ -1,0 +1,41 @@
+-- Kjørt i Supabase 9. juli 2026 sen kveld. To sammenfiltrede problemer:
+--
+-- PROBLEM 1 — RACE: 0007-mergen (870 produkter) ble kjørt i DB FØR bølge 3-
+-- normalize.py var committet. Den forsinkede scheduled-kjøringen (18-cron,
+-- ~1,9 t sen) sjekket ut GAMMEL kode rett før commitene landet (21:36–21:39),
+-- og gjenopprettet ~42 duplikatprodukter (stygge match-nøkler fantes ikke
+-- lenger i products → loader opprettet nye). 870 -> 912. Vakten feilet
+-- korrekt (Δ16 mot 896-baseline). PR-kjøringen #122 med ny kode gikk deretter
+-- grønt mot 912/913.
+-- LÆRDOM: DB-merge og kode-fiks MÅ committes/kjøres i riktig rekkefølge —
+-- kode først (eller innenfor samme harvest-vindu), merge etterpå. Sjekk
+-- Actions for pågående/forsinket scheduled kjøring før DB-merge.
+--
+-- PROBLEM 2 — NY BUG (avdekket av unique-kollisjon under re-merge):
+-- brukas_parser.py hadde hardkodet `brand = "Asics"` som fallback når
+-- JSON-LD mangler brand-felt. Brukås' Brooks-sider mangler feltet → alle
+-- Brooks-produkter derfra ble merket Asics: 20 rader (10 med «Brooks »-
+-- prefiks i navnet fra gammel-kode-kjøringen, 10 med rent navn fra #122).
+-- Historisk usynlig fordi Brukås kun var wiret for Asics/Saucony.
+-- FIKS i brukas_parser.py: fallback-kjede JSON-LD -> URL-slug
+-- (/brooks-…, autoritativ siden discovery velger på den) -> Asics.
+--
+-- OPPRYDDING KJØRT (fire steg, separate transaksjoner):
+--   A) 20 feilmerkede Asics-rader -> merge inn i ekte Brooks-produkter der
+--      (brand,model,gender)-target fantes, ellers ombrand+rename. Alerts
+--      repekes før sletting (ON DELETE CASCADE-fellen fra 0007).
+--   B) Standard kanon-merge av Mizuno/Brooks/NB-duplikater (som 0007), med
+--      target-rename flyttet til ETTER src-sletting (unngår unique-kollisjon
+--      products_brand_model_gender_key — det som veltet første forsøk).
+--   C) Rename av solo-produkter med stygg navneform — NÅ med merkefilter
+--      (mangelen på det var det som traff Asics-radene og avslørte problem 2).
+--   D) «Gtx» -> «GTX»-casing.
+--
+-- RESULTAT (verifisert): 913 -> 867 produkter. 0 feilmerkede, 0 stygge navn,
+-- 0 dupegrupper PÅ TVERS AV ALLE MERKER, 3/3 brukervarsler intakt, 0
+-- foreldreløse varianter, kun de 5 kjente ikke-løpesko uklassifisert.
+--
+-- NB NESTE HARVEST: Δ ≈ -46 mot 913-baseline → vakten trigges. Trigg manuelt
+-- via workflow_dispatch med resplit_tolerance=60 for grønn kjøring som setter
+-- baseline 867. (DO-blokkene er de samme som i 0007 pluss steg A over —
+-- utelatt her for lengde; se 0007 for malmønsteret.)
