@@ -47,12 +47,23 @@ def parse_size(html: str, url: str = "") -> dict | None:
     p = _product_ld(html)
     if not p:
         return None
-    brand = "Asics"
+    # Merke: JSON-LD først; Brukås utelater brand-feltet på enkelte merker
+    # (avdekket 9. juli: alle Brooks-sider manglet det → 20 produkter
+    # feilmerket av den gamle hardkodede Asics-fallbacken). Fallback nå:
+    # URL-sluggen (/brooks-glycerin-23-…), som er autoritativ — discovery
+    # velger jo produktene på nettopp den. Aller siste utvei: Asics
+    # (historisk hoved-merket her).
+    brand = None
     b = p.get("brand")
     if isinstance(b, list) and b and isinstance(b[0], dict):
-        brand = b[0].get("name") or brand
+        brand = b[0].get("name")
     elif isinstance(b, dict):
-        brand = b.get("name") or brand
+        brand = b.get("name")
+    if not brand:
+        ms = re.search(r"(?:^|/)(asics|saucony|brooks)-", url or "", re.I)
+        if ms:
+            brand = ms.group(1).title()
+    brand = brand or "Asics"
 
     name = (p.get("name") or "").strip()
     # strip merke-prefiks
