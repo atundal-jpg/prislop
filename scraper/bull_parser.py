@@ -14,6 +14,7 @@ Alt vi trenger ligger i server-HTML (ingen JS):
 parse(html, url) -> OfferRecord (loader.load-kompatibel).
 """
 from __future__ import annotations
+import json
 import re
 
 OG_TITLE_RE = re.compile(r'property="og:title"\s+content="([^"]+)"', re.I)
@@ -28,7 +29,43 @@ FARGE_RE = re.compile(
     r"Farge\s*:?\s*(?:<[^>]*>\s*){0,3}([A-ZÆØÅ][A-ZÆØÅ0-9/ .&'’-]{2,40})")
 # Asics barnesko-markører: GS (grade school) / PS (pre school) / TS (toddler).
 KIDS_RE = re.compile(r"\b(?:GS|PS|TS)\b")
-PRICE_RE = re.compile(r"(\d[\d\s\u00a0]{2,7})\s*,-")
+# PRIS (fikset 10. juli): gammelt mønster tok FØRSTE «tall,-» i HTML-en —
+# som er det sidefaste fraktbanneret «Fri frakt fra 1399,- *» øverst på alle
+# Bull-sider. Alle 160 tilbud sto derfor med 1399 uansett faktisk pris
+# (avdekket via klikk-redirecten; probe_bull_price.py bekreftet markupen).
+# Primærkilde nå: JSON-LD offers.price (ren salgspris, f.eks. "1840").
+# Fallback: første <div class="current …"> i product-price-blokken — den
+# hører til hovedproduktet; «andre kjøpte også»-karusellen kommer senere.
+PRICE_CURRENT_RE = re.compile(
+    r'class="current[^"]*"\s*>\s*(?:<strong>\s*)?(\d[\d\s\u00a0]{0,7}),-', re.I)
+LD_RE = re.compile(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
+
+
+def _ld_price(html: str) -> int | None:
+    """Salgspris fra JSON-LD (Product -> offers.price)."""
+    for m in LD_RE.finditer(html):
+        try:
+            data = json.loads(m.group(1))
+        except Exception:
+            continue
+        nodes = data.get("@graph", [data]) if isinstance(data, dict) else data
+        if not isinstance(nodes, list):
+            nodes = [nodes]
+        for n in nodes:
+            if not (isinstance(n, dict) and n.get("@type") == "Product"):
+                continue
+            off = n.get("offers") or {}
+            if isinstance(off, list):
+                off = off[0] if off else {}
+            p = off.get("price")
+            if p:
+                try:
+                    return int(round(float(p)))
+                except (TypeError, ValueError):
+                    pass
+    return None
+
+
 SELECT_RE = re.compile(r"<select[^>]*>(.*?)</select>", re.S | re.I)
 OPTION_RE = re.compile(r"<option[^>]*>([^<]+)</option>", re.I)
 
@@ -103,10 +140,11 @@ def parse(html: str, url: str = "") -> dict | None:
     if fm:
         color = re.sub(r"\s+", " ", fm.group(1)).strip().title()
 
-    price = None
-    pm = PRICE_RE.search(html)
-    if pm:
-        price = int(re.sub(r"[\s\u00a0]", "", pm.group(1)))
+    price = _ld_price(html)
+    if price is None:
+        pm = PRICE_CURRENT_RE.search(html)
+        if pm:
+            price = int(re.sub(r"[\s\u00a0]", "", pm.group(1)))
 
     og_img = im.group(1) if im else None
 
