@@ -203,7 +203,9 @@
 
   /* stores */
   .stores{padding:6px 0}
-  .store{display:grid;grid-template-columns:26px 1fr auto auto;align-items:center;gap:14px;padding:14px 24px;border-top:1px solid var(--line)}
+  .store{display:grid;grid-template-columns:26px minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:14px 24px;border-top:1px solid var(--line)}
+  .store .nm{min-width:0}
+  .store .cw{overflow-wrap:anywhere}
   .store:first-child{border-top:0}
   .store .rank{font-family:var(--mono);font-size:13px;color:var(--muted)}
   .store .nm{font-weight:600;font-size:16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
@@ -294,7 +296,7 @@
   footer .frow{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
 
   @media (max-width:640px){
-    .store{grid-template-columns:20px 1fr auto;row-gap:8px}
+    .store{grid-template-columns:20px minmax(0,1fr) auto;row-gap:8px}
     .store .go{grid-column:2 / -1;justify-self:start}
     .how{grid-template-columns:1fr}
     .from{text-align:left}
@@ -1150,7 +1152,14 @@ function storesHTML(offers, pid, selSize){
     const oid = String(o.offer_id);
     const ok = avail(o);
     const best = bestId!=null && oid===bestId;
-    const cw = o.store_color || o.colorway;
+    // Rydd fargestrengen for visning: Intersport/Sport 1 legger kjønnsprefiks
+    // («Womens/») i fargen, og lange skråstrek-strenger uten mellomrom kan
+    // ikke brytes → presset prisen ut av kortet på mobil. Mellomrom rundt «/»
+    // gjør strengen brytbar.
+    let cw = o.store_color || o.colorway;
+    if(cw){
+      cw = cw.replace(/^(womens?|mens?|wmns|w|m|u)\//i, "").replace(/\//g, " / ");
+    }
     return '<div class="store'+(ok?'':' size-out')+'" data-offer-id="'+esc(oid)+'">'
       + '<span class="rank">'+(i+1)+'</span>'
       + '<span class="nm">'+esc(storeName(o.store))
