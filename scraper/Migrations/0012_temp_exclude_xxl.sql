@@ -1,0 +1,20 @@
+-- Kjørt i Supabase 10. juli 2026 — MIDLERTIDIG, skal reverseres.
+--
+-- FUNN (probe_xxl_price v2+v3): XXLs server-rendrede HTML bærer CDN-stale
+-- priser i BÅDE __NEXT_DATA__ og JSON-LD — samme URL ga 1399 og 1229
+-- sekunder fra hverandre, mens nettleseren viste 1519 (svart) / 1749
+-- (hvit), og de ekte prisene finnes INGEN steder i payloaden. Ekte pris
+-- hydreres klient-side fra «price-information-api» (piSource-feltet).
+-- Altså: alle XXL-priser i DB er tilfeldige cache-øyeblikk av tidligere
+-- kampanjepriser — ikke fabrikkerte (som Bull), men upålitelige.
+--
+-- TILTAK: XXL ekskludert fra begge public-views (samme mønster som 0010
+-- for Bull). Størrelser/lager fra XXL er trolig OK, men prisene er
+-- kjernen i produktet — feil pris er verre enn manglende butikk.
+--
+-- VEI TILBAKE: finn pris-API-endepunktet via nettleser-devtools
+-- (Network-fanen på en XXL-produktside, filtrer «price»), integrer i
+-- harvest (hent pris per style-kode fra API-et), verifiser mot butikk,
+-- reverser denne (kjør 0011-definisjonene).
+--
+-- (View-definisjonene = 0011 pluss «store_id <> XXL»-linje i hver CTE.)
