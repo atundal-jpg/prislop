@@ -7,7 +7,7 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_brands.py
+        default: probe_xxl_price.py
         options:
           - probe_brukas.py
           - probe_bull_es.py
@@ -17,6 +17,7 @@ on:
           - probe_adidas.py
           - probe_brands.py
           - probe_bull_price.py
+          - probe_xxl_price.py
           - probe_xxl_facets.py
 
 jobs:
