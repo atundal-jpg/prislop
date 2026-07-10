@@ -1,0 +1,24 @@
+-- Kjørt i Supabase 10. juli 2026 — MIDLERTIDIG, skal reverseres.
+--
+-- FUNN (avdekket av bruker via den nye klikk-redirecten, første ekte
+-- brukertest): sko vist til 1 399 kr hos Bull kostet 2 300 (ordinær) /
+-- 1 840 (-20 %) på Bulls side. Årsak: bull_parser.py sitt
+--   PRICE_RE = re.compile(r"(\d[\d\s\u00a0]{2,7})\s*,-")
+-- tar FØRSTE «tall,-»-treff i HTML-en — som er det sidefaste frakt-
+-- banneret «Fri frakt fra 1399,- *» øverst på ALLE Bull-sider. Verifisert:
+-- alle 160 ferske Bull-tilbud hadde pris nøyaktig 1399.00. Parseren har
+-- ALDRI lest en ekte Bull-pris. Bonusfunn: «prisendringen» 1399→1499→1399
+-- den 20. juni var Bulls fraktgrense som ble endret noen timer — ikke
+-- produktpriser.
+--
+-- TILTAK NÅ: Bull (store_id 73) ekskludert fra public.v_prislop_products
+-- (fresh_offers-CTE) og public.v_prislop_price_series (obs-CTE) — feil
+-- pris er verre enn manglende butikk for et tillitsprodukt.
+--
+-- VEI TILBAKE: probe_bull_price.py (lagt til i probe.yml) dumper pris-
+-- kontekst fra levende Bull-sider → parser fikses på ekte markup →
+-- denne ekskluderingen fjernes (kjør 0005 + 0006 sine definisjoner på
+-- nytt uten «store_id <> 73»-linjene) → neste harvest korrigerer prisene.
+--
+-- (Selve view-definisjonene er identiske med 0005/0006 pluss én
+-- WHERE-linje i hver — utelatt her for lengde.)
