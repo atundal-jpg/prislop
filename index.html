@@ -1133,6 +1133,11 @@ function sparkHTML(series){
     + '</div>';
 }
 
+const UT_BASE = "https://agmhjcskkjtnwmhzzckx.supabase.co/functions/v1/ut";
+// Utgående lenker går via klikk-redirecten (logging + fremtidig affiliate-
+// innbyttepunkt). Fallback til direkte-URL hvis offer_id mot formodning mangler.
+const outUrl = o => o.offer_id ? UT_BASE + "?offer=" + encodeURIComponent(o.offer_id) + "&src=web" : o.url;
+
 function storesHTML(offers, pid, selSize){
   if(!offers || !offers.length) return '';
   const idx = selSize ? sizeIndexFor(pid) : null;
@@ -1154,7 +1159,7 @@ function storesHTML(offers, pid, selSize){
       +    (cw ? ' <span class="cw">'+esc(cw)+'</span>' : '')
       + '</span>'
       + '<span class="price">'+nok(o.price)+' kr</span>'
-      + '<a class="go" href="'+esc(o.url)+'" target="_blank" rel="sponsored nofollow noopener">Til '+esc(storeName(o.store))+' →</a>'
+      + '<a class="go" href="'+esc(outUrl(o))+'" target="_blank" rel="sponsored nofollow noopener">Til '+esc(storeName(o.store))+' →</a>'
       + '</div>';
   }).join("");
   return '<div class="stores" id="stores-'+esc(pid)+'">'+rows+'</div>';
