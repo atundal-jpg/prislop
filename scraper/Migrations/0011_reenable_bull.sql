@@ -1,0 +1,23 @@
+-- Kjørt i Supabase 10. juli 2026 — reverserer 0010 (midlertidig Bull-
+-- ekskludering).
+--
+-- FORUTSETNINGER OPPFYLT FØR GJENÅPNING:
+--   1. bull_parser.py fikset: JSON-LD offers.price som primærkilde
+--      (probe_bull_price.py verifiserte markupen), forankret
+--      «current»-prisdiv som fallback, banneret alene gir None.
+--   2. Forgiftet Bull-prishistorikk slettet (100 % bannerverdier
+--      1399/1499 — aldri én ekte pris, ingenting av verdi tapt).
+--   3. Harvest med fikset parser kjørt og verifisert: 160 tilbud,
+--      priser 800–3 100 kr, snitt 1 812, NULL tilbud på gamle 1399.
+--      Stikkprøve: Gel-Kayano 32 Dame hos Bull = 1 840 kr (matcher
+--      brukerobservert pris eksakt).
+--
+-- Definisjonene som ble kjørt er identiske med 0005 (v_prislop_products)
+-- og 0006 (v_prislop_price_series), kun uten 0010 sine midlertidige
+-- «store_id <> 73»-linjer — se de filene for full SQL.
+--
+-- LÆRDOM (for fremtidige butikk-integrasjoner): en prisparser som «virker»
+-- (returnerer tall, laster grønt) kan likevel lese feil felt konsekvent.
+-- Bull-parseren returnerte samme pris for alle 160 tilbud i ukevis uten at
+-- noe alarmerte. Verdt å vurdere en billig vakt i post_harvest_check:
+-- flagg butikker der >80 % av tilbudene har identisk pris.
