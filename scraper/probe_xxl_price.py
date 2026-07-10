@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-probe_xxl_price.py v2 — dump HELE price-objektet per XXL-fargevariant.
-
-v1 druknet i oversettelsesstrenger. v2 går rett på parserens egen sti
-(newPdpProps.initialElevateProductPageData.baseProduct.products[]) og
-skriver price-objektet i sin helhet + søker hele JSON-treet etter
-fasit-verdiene 1229/1519/1749 med full sti.
-
-Fasit fra bruker 10. juli: svart artikkel = 1519 («Få igjen»),
-hvit = 1749. Vi lagret 1229 (= price.selling.range.min) for alle fire.
+probe_xxl_price.py v3 — XXLs SSR-priser er CDN-stale (samme URL ga 1399 og
+1229 sekunder fra hverandre; nettleser viser 1519). Ekte pris hydreres fra
+«price-information-api» klient-side. v3 sjekker to alternative kilder:
+  1. JSON-LD offers på siden (reddet Bull) — er den fersk hos XXL?
+  2. Jakter pris-API-endepunktet i HTML/JS (price-information-mønstre)
+     og prøver å kalle det med style-kodene.
 """
 from __future__ import annotations
 import json, re, sys, types, urllib.request
@@ -24,72 +21,52 @@ except Exception:
     class Fetcher:
         def get(self, url):
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (prislop-probe)",
-                                                       "Accept-Language": "nb-NO"})
+                                                       "Accept-Language": "nb-NO", "Accept": "*/*"})
             try:
                 with urllib.request.urlopen(req, timeout=40) as r:
                     return r.read().decode("utf-8", "replace")
             except Exception as e:
                 print("    fetch-feil %s: %s" % (url, e)); return None
 
-URLS = [
-    "https://www.xxl.no/nike-vomero-18-lopesko-herre-svart/p/1244055_1_Style",
-    "https://www.xxl.no/nike-vomero-18-lopesko-herre-hvit/p/1240624_1_Style",
-]
-FASIT = {1229, 1519, 1749}
-NEXT_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
-
-
-def finn_fasit(node, path, out):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            finn_fasit(v, path + "." + str(k), out)
-    elif isinstance(node, list):
-        for i, v in enumerate(node):
-            finn_fasit(v, f"{path}[{i}]", out)
-    else:
-        try:
-            if float(node) in FASIT:
-                out.append((path, node))
-        except (TypeError, ValueError):
-            pass
+URL = "https://www.xxl.no/nike-vomero-18-lopesko-herre-svart/p/1244055_1_Style"
+STYLES = ["1244055_1_Style", "1240624_1_Style"]
+LD = re.compile(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', re.S | re.I)
+API_HINT = re.compile(r'["\'](https?://[^"\']*price[^"\']*|/[a-z0-9/_.-]*price[a-z0-9/_.-]*)["\']', re.I)
 
 
 def main():
     f = Fetcher()
-    for url in URLS:
-        print("=" * 78)
-        print("URL:", url)
-        html = f.get(url)
-        if not html:
+    html = f.get(URL) or ""
+    print("HTML-lengde:", len(html))
+
+    print("\n--- 1) JSON-LD offers (er prisen fersk her?) ---")
+    for i, m in enumerate(LD.finditer(html)):
+        raw = m.group(1)
+        # skriv kun offers-delene for kompakthet
+        for om in re.finditer(r'"offers"\s*:\s*(\{.*?\}|\[.*?\])', raw, re.S):
+            print(f"[LD {i}]", re.sub(r"\s+", " ", om.group(1))[:500])
+
+    print("\n--- 2) API-kandidater i HTML (price-mønstre i URL-er) ---")
+    seen = set()
+    for m in API_HINT.finditer(html):
+        u = m.group(1)
+        if u in seen or u.endswith((".css", ".svg", ".png")):
             continue
-        m = NEXT_RE.search(html)
-        if not m:
-            print("  FANT IKKE __NEXT_DATA__"); continue
-        data = json.loads(m.group(1))
+        seen.add(u)
+        print("  ", u[:160])
+        if len(seen) >= 15:
+            break
 
-        try:
-            products = (data["props"]["pageProps"]["newPdpProps"]
-                        ["initialElevateProductPageData"]["baseProduct"]["products"])
-        except (KeyError, TypeError) as e:
-            print("  fant ikke products-stien:", e); products = []
-
-        for p in products:
-            print(f"\n  --- fargevariant code={p.get('code')} color={p.get('localizedColorName') or p.get('baseColor')} url={p.get('url','')}")
-            print("  price-objekt (FULLT):")
-            print("   ", json.dumps(p.get("price"), ensure_ascii=False))
-            v0 = (p.get("variants") or [{}])[0]
-            pris_ig_v = {k: v for k, v in v0.items() if re.search(r"price|pris", str(k), re.I)}
-            if pris_ig_v:
-                print("  variant[0] prisfelter:", json.dumps(pris_ig_v, ensure_ascii=False)[:400])
-
-        print("\n  --- fasit-verdier (1229/1519/1749) hvor som helst i treet ---")
-        hits = []
-        finn_fasit(data, "$", hits)
-        for path, val in hits[:25]:
-            print(f"  {val}  <-  {path}")
-        if not hits:
-            print("  (ingen — prisene kan ha endret seg siden fasit ble notert)")
-    print("=" * 78)
+    print("\n--- 3) Gjett-test av vanlige endepunktsmønstre ---")
+    kandidater = [
+        f"https://www.xxl.no/rest-api/price-information?styleIds={','.join(STYLES)}",
+        f"https://www.xxl.no/api/price-information?styleIds={','.join(STYLES)}",
+        f"https://www.xxl.no/p/api/price-information?ids={','.join(STYLES)}",
+    ]
+    for u in kandidater:
+        body = f.get(u)
+        print("  ", u)
+        print("    ->", (re.sub(r"\s+", " ", body)[:300] if body else "ingen respons"))
 
 
 if __name__ == "__main__":
