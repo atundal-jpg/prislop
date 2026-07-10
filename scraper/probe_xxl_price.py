@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-probe_xxl_esales.py
+probe_xxl_price.py
 
 Formaal: avgjoere om XXLs Elevate/eSales-API (samme API som discovery/
 kategorisidene bruker for produktlister) leverer KORREKTE per-artikkel-priser
@@ -28,7 +28,7 @@ Bruk:
     3. Fyll inn ARTICLE_HVIT (artikkelnummer for hvit fargevei) hvis kjent
        -- ellers kjoer scriptet uten, det hopper da over den sjekken og
        sier ifra.
-    4. Kjoer: python probe_xxl_esales.py
+    4. Kjoer: python probe_xxl_price.py
        (lokalt: samme resultat forventes uansett hvor du kjoerer fra,
        DERSOM hypotesen stemmer -- det er akkurat det vi tester.)
 
