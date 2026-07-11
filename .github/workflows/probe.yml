@@ -23,6 +23,7 @@ on:
           - probe_xxl_jsonld_price.py
           - probe_xxl_nextdata_price.py
           - probe_xxl_group_dump.py
+          - probe_esales_links.py
 
 jobs:
   probe:
