@@ -7,7 +7,7 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_xxl_group_dump.py
+        default: probe_discover_counts.py
         options:
           - probe_brukas.py
           - probe_bull_es.py
@@ -23,7 +23,7 @@ on:
           - probe_xxl_jsonld_price.py
           - probe_xxl_nextdata_price.py
           - probe_xxl_group_dump.py
-          - probe_esales_links.py
+          - probe_discover_counts.py
 
 jobs:
   probe:
