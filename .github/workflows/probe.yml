@@ -7,7 +7,7 @@ on:
         description: "Hvilket probe-script skal kjøres?"
         type: choice
         required: true
-        default: probe_xxl_jsonld_price.py
+        default: probe_xxl_nextdata_price.py
         options:
           - probe_brukas.py
           - probe_bull_es.py
@@ -21,6 +21,7 @@ on:
           - probe_xxl_facets.py
           - probe_xxl_esales.py
           - probe_xxl_jsonld_price.py
+          - probe_xxl_nextdata_price.py
 
 jobs:
   probe:
