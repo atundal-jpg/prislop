@@ -148,11 +148,14 @@
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
   .sec-head h2{font-size:clamp(24px,3.4vw,34px)}
 
-  /* kategori-landingsside: intro + AEO-svar */
+  /* kategori-landingsside: intro + AEO-svar (gjenbrukes av prisfall-siden) */
   .kat-intro{border:1px solid var(--line);background:#fff;border-radius:14px;padding:20px 22px;margin-bottom:18px}
   .kat-intro .kat-lede{margin:6px 0 0;font-size:15.5px;color:#2b332f;max-width:70ch}
   .kat-intro .kat-aeo{margin:14px 0 0;padding:14px 16px;background:var(--petrol-soft);border-radius:10px;font-size:14.5px;color:#1c2a27}
   .kat-intro .kat-aeo strong{font-family:var(--disp);font-weight:600;display:block;margin-bottom:4px}
+
+  /* prisfall-badge i kort-sublinja — honey er allerede sidens prisdipp-farge */
+  .sub .dropbadge{font-family:var(--mono);font-size:12px;color:var(--honey);font-weight:700;white-space:nowrap}
 
   /* attributt-filtre (karbonplate/vanntett/wide) — egen filterdimensjon,
      visuelt skilt fra kategori/merke-dropdownene med en liten etikett */
@@ -321,6 +324,7 @@
       Prisløp
     </div>
     <nav>
+      <a href="./?prisfall">Prisfall</a>
       <a href="#sammenlign">Sammenlign</a>
       <a href="#slik">Slik funker det</a>
     </nav>
@@ -454,6 +458,10 @@
       <a href="./?kategori=mosjon">Mosjon &amp; hverdag</a>
       <a href="./?kategori=bane">Bane &amp; pigger</a>
     </nav>
+    <nav class="fcats" aria-label="Prisfall">
+      <span class="fcats-h">Prisfall</span>
+      <a href="./?prisfall">Løpesko som har falt i pris siste 14 dager</a>
+    </nav>
     <div class="frow">
       <span><a href="om.html" style="color:var(--ink)">Om Prisløp</a> · <a href="personvern.html" style="color:var(--ink)">Personvern</a></span>
       <span class="mono">prisløp.no</span>
@@ -523,7 +531,7 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
-const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false };
+const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false, prisfall:false };
 
 // Spor 4: brukskategorier (subcategory i v_prislop_products). Etikettene
 // gjenbrukes i kort-badgen og som JSON-LD-category.
@@ -598,6 +606,19 @@ let PRODUCT_BY_ID = {};
 const productUrl = pid => CANON_BASE + "?product=" + encodeURIComponent(pid);
 /* ---- SEO/AEO · kategori-landingssider: ?kategori=<slug> ---- */
 const kategoriUrl = slug => CANON_BASE + "?kategori=" + encodeURIComponent(slug);
+
+/* ---- Trafikkloop · prisfall-landingsside: ?prisfall ----
+   Ingen egen datahenting: drop14 ligger allerede per produkt i
+   v_prislop_products (rabatt mot 14-dagers-basislinjen i price_history),
+   så lista er ren klient-side filtrering/sortering av PRODUCTS. */
+const PRISFALL_URL = CANON_BASE + "?prisfall";
+const PRISFALL_MIN = 0.03;   // vis kun fall på minst 3 % siste 14 dager
+const PRISFALL_CONTENT = {
+  title: "Prisfall på løpesko — størst nedgang nå | Prisløp",
+  desc:  "Se hvilke løpesko som har falt mest i pris siste 14 dager hos norske nettbutikker. Oppdateres hver 6. time — sjekk lager i din størrelse og få varsel ved nye prisfall.",
+  intro: "Her samler vi løpeskoene som faktisk har falt i pris de siste 14 dagene, sortert etter størst nedgang. Prisene hentes fra norske nettbutikker hver 6. time, så lista endrer seg fra dag til dag — og hvert kort viser som vanlig lagerstatus per størrelse, så du ser om prisfallet gjelder <em>din</em> størrelse."
+};
+const dropPct = p => Math.round(Number(p.drop14 || 0) * 100);
 
 /* ---- paginering: kort forsideliste (topp N etter rank_score), «Vis flere» for resten ---- */
 const PAGE_SIZE = 18;
@@ -746,6 +767,63 @@ function removeKategoriJsonLd(){
   if(s) s.remove();
 }
 
+/* ---- Prisfall-siden: AEO-svar + CollectionPage/ItemList/FAQPage-JSON-LD.
+   Samme mønster som kategorisidene — AEO-teksten i JSON-LD er identisk med
+   den som vises synlig i intro-boksen. ---- */
+function prisfallAeoAnswer(){
+  const list = PRODUCTS.filter(p => Number(p.drop14) >= PRISFALL_MIN)
+                       .sort((a,b) => Number(b.drop14||0) - Number(a.drop14||0));
+  if(!list.length) return "Ingen løpesko har falt merkbart i pris siste 14 dager akkurat nå. Lista oppdateres hver 6. time — sjekk igjen senere.";
+  const b = list[0];
+  return "Akkurat nå har " + list.length + " modeller falt i pris siste 14 dager hos Prisløp. Størst fall har "
+    + b.brand + " " + b.model + ", ned " + dropPct(b) + " % til " + nok(b.from_price) + " kr"
+    + (b.n_stores ? " (" + b.n_stores + " butikker sammenlignet)" : "")
+    + ". Prisene oppdateres hver 6. time.";
+}
+function prisfallJsonLd(){
+  const url = PRISFALL_URL;
+  const items = currentList().slice(0, 18);
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        "@id": url + "#page",
+        "url": url,
+        "name": PRISFALL_CONTENT.title,
+        "isPartOf": { "@id": CANON_BASE + "#website" },
+        "mainEntity": {
+          "@type": "ItemList",
+          "itemListElement": items.map((p,i) => ({
+            "@type": "ListItem", "position": i+1,
+            "url": productUrl(p.product_id), "name": p.brand + " " + p.model
+          }))
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": url + "#faq",
+        "mainEntity": [{
+          "@type": "Question", "name": "Hvilke løpesko har falt mest i pris nå?",
+          "acceptedAnswer": { "@type": "Answer", "text": prisfallAeoAnswer() }
+        }]
+      }
+    ]
+  };
+}
+function injectPrisfallJsonLd(){
+  removePrisfallJsonLd();
+  const s = document.createElement("script");
+  s.type = "application/ld+json";
+  s.id = "prisfall-jsonld";
+  s.textContent = JSON.stringify(prisfallJsonLd());
+  document.head.appendChild(s);
+}
+function removePrisfallJsonLd(){
+  const s = el("prisfall-jsonld");
+  if(s) s.remove();
+}
+
 const metaC   = sel => { const n = document.querySelector(sel); return n ? (n.getAttribute("content") || n.getAttribute("href") || "") : ""; };
 const setAttr = (sel, attr, val) => { const n = document.querySelector(sel); if(n) n.setAttribute(attr, val); };
 
@@ -790,6 +868,7 @@ function applyHomeMeta(){
   setAttr('meta[name="twitter:description"]', "content", HEAD_DEFAULTS.twDesc);
   removeProductJsonLd();
   removeKategoriJsonLd();
+  removePrisfallJsonLd();
   renderKatIntro(null);
 }
 function applyKategoriMeta(slug){
@@ -804,8 +883,24 @@ function applyKategoriMeta(slug){
   setAttr('meta[name="twitter:title"]',      "content", c.title);
   setAttr('meta[name="twitter:description"]', "content", c.desc);
   removeProductJsonLd();
+  removePrisfallJsonLd();
   injectKategoriJsonLd(slug);
   renderKatIntro(slug);
+}
+function applyPrisfallMeta(){
+  const url = PRISFALL_URL;
+  setAttr('link[rel="canonical"]', "href", url);
+  setAttr('meta[property="og:url"]', "content", url);
+  document.title = PRISFALL_CONTENT.title;
+  setAttr('meta[name="description"]',        "content", PRISFALL_CONTENT.desc);
+  setAttr('meta[property="og:title"]',       "content", PRISFALL_CONTENT.title);
+  setAttr('meta[property="og:description"]', "content", PRISFALL_CONTENT.desc);
+  setAttr('meta[name="twitter:title"]',      "content", PRISFALL_CONTENT.title);
+  setAttr('meta[name="twitter:description"]', "content", PRISFALL_CONTENT.desc);
+  removeProductJsonLd();
+  removeKategoriJsonLd();
+  injectPrisfallJsonLd();
+  renderPrisfallIntro();
 }
 /* Synlig intro + AEO-svar over kortlista — må matche det som ligger i JSON-LD,
    siden Google/AI-søk forventer at FAQ-innhold faktisk vises på siden. */
@@ -821,17 +916,32 @@ function renderKatIntro(slug){
     + '<p class="kat-aeo"><strong>' + esc("Hva er billigst innen " + (KAT_LABELS[slug]||"").toLowerCase() + " hos Prisløp nå?") + '</strong><br>'
     + esc(kategoriAeoAnswer(slug)) + '</p>';
 }
-/* Holder URL-en synkronisert med filters.kat når brukeren filtrerer/søker
-   (render() river uansett åpne kort). Kategori-valget er den eneste filteret
-   som får sin egen URL/landingsside — resten (merke/størrelse/søk/sortering)
-   er kun klient-side forfining, samme mønster som før spor 4. */
+function renderPrisfallIntro(){
+  const box = el("kat-intro");
+  if(!box) return;
+  box.hidden = false;
+  box.innerHTML =
+      '<p class="eyebrow">Prisfall siste 14 dager</p>'
+    + '<p class="kat-lede">' + PRISFALL_CONTENT.intro + '</p>'
+    + '<p class="kat-aeo"><strong>Hvilke løpesko har falt mest i pris nå?</strong><br>'
+    + esc(prisfallAeoAnswer()) + '</p>';
+}
+/* Holder URL-en synkronisert med rutetilstanden når brukeren filtrerer/søker
+   (render() river uansett åpne kort). Prisfall og kategori er de eneste
+   filtrene som får egen URL/landingsside — resten (merke/størrelse/søk/
+   sortering) er kun klient-side forfining. Prisfall vinner over kategori:
+   velger brukeren en kategori mens prisfall-siden er åpen, fungerer den som
+   forfining innenfor prisfall-lista (URL forblir ?prisfall). */
 function syncListUrl(){
   const params = new URLSearchParams(location.search);
-  if(filters.kat && KAT_LABELS[filters.kat]){
+  if(filters.prisfall){
+    if(location.href !== PRISFALL_URL) history.replaceState({}, "", PRISFALL_URL);
+    applyPrisfallMeta();
+  }else if(filters.kat && KAT_LABELS[filters.kat]){
     const url = kategoriUrl(filters.kat);
     if(location.href !== url) history.replaceState({}, "", url);
     applyKategoriMeta(filters.kat);
-  }else if(params.get("product") || params.get("kategori")){
+  }else if(params.get("product") || params.get("kategori") || params.has("prisfall")){
     history.replaceState({}, "", HOME_URL);
     applyHomeMeta();
   }
@@ -864,6 +974,12 @@ function syncFromLocation(){
     if(card){ openCard(card, { push:false, scroll:false }); return; }
   }
   document.querySelectorAll(".product.open").forEach(closeCard);
+  if(params.has("prisfall")){
+    filters.prisfall = true;
+    resetPaging(); render(); applyPrisfallMeta();
+    return;
+  }
+  if(filters.prisfall){ filters.prisfall = false; resetPaging(); render(); }
   const slug = params.get("kategori");
   if(slug && KAT_LABELS[slug]){
     filters.kat = slug; const sel = el("f-kat"); if(sel) sel.value = slug;
@@ -891,9 +1007,12 @@ async function init(){
   await buildHeroStats();
   bindControls();
   applyKategoriFromUrl();
+  applyPrisfallFromUrl();
   render();
   if(new URLSearchParams(location.search).get("product")){
     openFromUrl();
+  }else if(filters.prisfall){
+    applyPrisfallMeta();
   }else if(filters.kat){
     applyKategoriMeta(filters.kat);
   }
@@ -905,6 +1024,10 @@ function applyKategoriFromUrl(){
     filters.kat = slug;
     const sel = el("f-kat"); if(sel) sel.value = slug;
   }
+}
+// ved sidelast: aktiver prisfall-modus hvis ?prisfall er i URL-en
+function applyPrisfallFromUrl(){
+  if(new URLSearchParams(location.search).has("prisfall")) filters.prisfall = true;
 }
 
 async function buildHeroStats(){
@@ -968,6 +1091,7 @@ function bindAttrPill(id, apply){
 
 function currentList(){
   let list = PRODUCTS.slice();
+  if(filters.prisfall) list = list.filter(p => Number(p.drop14) >= PRISFALL_MIN);
   if(filters.brand)  list = list.filter(p => p.brand === filters.brand);
   if(filters.gender) list = list.filter(p => p.gender === filters.gender);
   if(filters.kat)    list = list.filter(p => p.subcategory === filters.kat);
@@ -982,8 +1106,11 @@ function currentList(){
     if(ids) list = list.filter(p => ids.has(p.product_id));
   }
   const s = filters.sort;
+  // I prisfall-modus betyr «Anbefalt» størst prisfall først — det ER sidens
+  // premiss. Velger brukeren en annen sortering, respekteres den.
   list.sort((a,b) =>
-    s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || (a.from_price||0)-(b.from_price||0)
+    (filters.prisfall && s==="rank") ? Number(b.drop14||0)-Number(a.drop14||0) || (a.from_price||0)-(b.from_price||0)
+    : s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || (a.from_price||0)-(b.from_price||0)
     : s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || (a.from_price||0)-(b.from_price||0)
     : s==="name" ? String(a.model).localeCompare(String(b.model),"nb")
     : (a.from_price||0)-(b.from_price||0));
@@ -992,7 +1119,7 @@ function currentList(){
 
 function render(){
   const list = currentList();
-  const anyFilter = filters.q||filters.brand||filters.gender||filters.size||filters.carbon||filters.waterproof||filters.wide;
+  const anyFilter = filters.q||filters.brand||filters.gender||filters.size||filters.carbon||filters.waterproof||filters.wide||filters.prisfall;
 
   let shown = list.slice(0, visibleCount);
   // dyplenket produkt utenfor synlig side: fest øverst så URL-en alltid rendrer kortet
@@ -1005,12 +1132,19 @@ function render(){
     (shown.length < list.length
       ? "Viser " + shown.length + " av " + list.length + " modeller"
       : list.length + (list.length===1?" modell":" modeller"))
+    + (filters.prisfall && list.length ? " med prisfall siste 14 dager" : "")
     + (anyFilter ? ' <button class="reset" onclick="resetFilters()">nullstill filtre</button>' : "");
 
   if(!list.length){
-    el("products").innerHTML = '<div class="state"><h3>Ingen treff</h3>'
-      + '<p>Vi fant ingen modeller som passer filtrene. Prøv et bredere søk.</p>'
-      + '<button class="btn" onclick="resetFilters()">Nullstill filtre</button></div>';
+    el("products").innerHTML = filters.prisfall
+      ? '<div class="state"><h3>Ingen prisfall akkurat nå</h3>'
+        + '<p>Ingen modeller har falt merkbart i pris siste 14 dager'
+        + (filters.brand||filters.kat||filters.q||filters.size ? ' innenfor filtrene dine' : '')
+        + '. Lista oppdateres hver 6. time — kom gjerne tilbake.</p>'
+        + '<button class="btn" onclick="resetFilters()">Til hele katalogen</button></div>'
+      : '<div class="state"><h3>Ingen treff</h3>'
+        + '<p>Vi fant ingen modeller som passer filtrene. Prøv et bredere søk.</p>'
+        + '<button class="btn" onclick="resetFilters()">Nullstill filtre</button></div>';
     return;
   }
   el("products").innerHTML = shown.map(cardHTML).join("")
@@ -1021,9 +1155,12 @@ function render(){
 }
 
 function cardHTML(p){
-  const sub = [KAT_LABELS[p.subcategory] || null,
-               cap(p.gender), plur(p.n_colorways,"farge","farger"),
-               (p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
+  const drop = (filters.prisfall && Number(p.drop14) >= PRISFALL_MIN)
+    ? '<span class="dropbadge">▼ ' + dropPct(p) + ' % siste 14 d</span>' : null;
+  const sub = [drop,
+               esc(KAT_LABELS[p.subcategory] || "") || null,
+               esc(cap(p.gender)), esc(plur(p.n_colorways,"farge","farger")),
+               esc(p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
                .filter(Boolean).join(" · ");
   return ''
   + '<article class="product" data-pid="'+p.product_id+'">'
@@ -1031,7 +1168,7 @@ function cardHTML(p){
   +     '<div class="p-top">'
   +       '<div class="shoe">'+SHOE_SVG+'</div>'
   +       '<div class="p-id"><div class="brand">'+esc(p.brand)+'</div>'
-  +          '<h3>'+esc(p.model)+'</h3><div class="sub">'+esc(sub)+'</div></div>'
+  +          '<h3>'+esc(p.model)+'</h3><div class="sub">'+sub+'</div></div>'
   +       '<div class="from"><div class="lbl">Lavest nå</div>'
   +          '<div class="val">'+nok(p.from_price)+'&nbsp;<span>kr</span></div></div>'
   +       '<div class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'
@@ -1046,8 +1183,17 @@ async function toggle(btn){
   const card = btn.closest(".product");
   if(card.classList.contains("open")){
     closeCard(card);
-    history.pushState({}, "", HOME_URL);   // lukk → tilbake til forsida
-    applyHomeMeta();
+    // lukk → tilbake til lista vi kom fra (prisfall/kategori/forside)
+    if(filters.prisfall){
+      history.pushState({}, "", PRISFALL_URL);
+      applyPrisfallMeta();
+    }else if(filters.kat && KAT_LABELS[filters.kat]){
+      history.pushState({}, "", kategoriUrl(filters.kat));
+      applyKategoriMeta(filters.kat);
+    }else{
+      history.pushState({}, "", HOME_URL);
+      applyHomeMeta();
+    }
   }else{
     await openCard(card, { push:true, scroll:false });
   }
@@ -1347,6 +1493,7 @@ function resetFilters(){
   filters.q=""; filters.brand=""; filters.gender=""; filters.size="";
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
   el("f-kat").value=""; filters.kat="";
+  filters.prisfall=false;
   filters.carbon=false; filters.waterproof=false; filters.wide=false;
   ["f-carbon","f-waterproof","f-wide"].forEach(id => el(id).setAttribute("aria-pressed","false"));
   resetPaging();
