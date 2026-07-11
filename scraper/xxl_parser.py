@@ -14,6 +14,23 @@ To kilder i dokumentet, som vi slår sammen:
 EAN hentes via ticket-dekoding (fungerer for ALLE farger fra én henting) og
 kryss-valideres mot JSON-LD-gtin for den viste fargen.
 
+RETTET 11. juli (probe_xxl_group_dump.py, kveldsøkt): prisen i
+__NEXT_DATA__.products[].price.selling.range.min.value er IKKE reell per
+fargevariant. XXL server-rendrer kun én ekte pris per sidevisning — den til
+fargevarianten som faktisk vises (products[].isSelected == true). De andre
+fargevariantene i samme products[]-liste arver/kopierer den viste fargens
+pris i dette feltet; det er ikke deres egen pris. Bekreftet empirisk: samme
+modellgruppe (Nike Vomero 18 herre) har fire fargevarianter med fire ulike
+ekte priser (1519/1399/1749/1229), men __NEXT_DATA__ fra ÉN sidevisning
+viste identisk pris på alle fire.
+
+Konsekvens: vi emitter nå KUN rader for den fargevarianten som faktisk var
+isSelected på siden vi hentet. De andre fargevariantene i products[]-lista
+droppes fullstendig fremfor å skrive feil pris — en pris-sammenligningsside
+har ingen nytte av et tilbud med feil pris. Discovery (discovery.py) må på
+sikt utvides til å besøke hver fargevariants egen URL for å gjenvinne full
+fargedekning; det er IKKE gjort i denne fila.
+
 Snublefelle: intern `Size_N` følger IKKE EU-størrelsen (Size_13 = 39, Size_3 = 40).
 Bruk alltid `label`/`size`, aldri tallet i sizeCode.
 """
@@ -91,8 +108,10 @@ def parse_xxl(html: str) -> dict:
                    style_code, url, size_label, size_code, ean,
                    price, currency, online_stock, online_status}, ... ],
         "ean_validation": {"checked": int, "mismatches": [ ... ]},
+        "skipped_colorways": [ {style_code, color}, ... ],  # ikke-viste farger, droppet
       }
-    Én rad per (fargevariant × størrelse).
+    Én rad per (fargevariant × størrelse) -- men KUN for fargevarianten som
+    faktisk var isSelected på den hentede siden (se modul-docstring).
     """
     nd = _extract_next_data(html)
     products = (
@@ -104,8 +123,19 @@ def parse_xxl(html: str) -> dict:
     rows = []
     checked = 0
     mismatches = []
+    skipped_colorways = []
 
     for p in products:
+        # KRITISK: kun den viste fargevarianten har en reell pris i denne
+        # responsen. Søskenfargene i samme products[]-liste arver/kopierer
+        # den viste fargens pris -- drop dem heller enn å skrive feil pris.
+        if not p.get("isSelected"):
+            skipped_colorways.append({
+                "style_code": p.get("code"),
+                "color": p.get("localizedColorName") or p.get("baseColor"),
+            })
+            continue
+
         brand = (p.get("brand") or {}).get("name")
         title = p.get("title")
         line = p.get("productLine")
@@ -143,7 +173,11 @@ def parse_xxl(html: str) -> dict:
                 "online_status": stock_s,
             })
 
-    return {"rows": rows, "ean_validation": {"checked": checked, "mismatches": mismatches}}
+    return {
+        "rows": rows,
+        "ean_validation": {"checked": checked, "mismatches": mismatches},
+        "skipped_colorways": skipped_colorways,
+    }
 
 
 if __name__ == "__main__":
@@ -153,15 +187,24 @@ if __name__ == "__main__":
     res = parse_xxl(html)
     rows = res["rows"]
 
+    if not rows:
+        print("Ingen rader (isSelected-fargen manglet eller hadde ingen varianter).")
+        sys.exit(0)
+
     colors = sorted({r["color"] for r in rows})
     print(f"Produkt: {rows[0]['brand']} {rows[0]['model_title']}  ({rows[0]['gender']})")
-    print(f"Farger: {len(colors)} -> {', '.join(colors)}")
+    print(f"Farger returnert (kun isSelected): {len(colors)} -> {', '.join(colors)}")
+    if res["skipped_colorways"]:
+        skipped_desc = ", ".join(
+            f"{c['color']} ({c['style_code']})" for c in res["skipped_colorways"]
+        )
+        print(f"Droppet søskenfarger (ikke isSelected, upålitelig pris): "
+              f"{len(res['skipped_colorways'])} -> {skipped_desc}")
     print(f"Rader (farge×størrelse): {len(rows)}")
     val = res["ean_validation"]
     print(f"EAN kryss-validert mot JSON-LD: {val['checked']} sjekket, "
           f"{len(val['mismatches'])} avvik")
     print()
-    # vis én farge som eksempel
     show = [r for r in rows if r["color"] == colors[0]]
     print(f"== {colors[0]} ({show[0]['price']} {show[0]['currency']}) ==")
     print(f"{'str':>5}  {'EAN':<14} {'lager':>5}  status")
