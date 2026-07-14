@@ -7,6 +7,9 @@ og feiler kjøringen hvis produkttallet avviker mer enn RESPLIT_TOLERANCE
 eller utilsiktet masse-sletting. Sjekker også om én enkelt pris dominerer
 en butikks tilbud (PRICE_SHARE_THRESHOLD, standard 80%) — typisk tegn på
 at en parser har brutt sammen og returnerer samme (feil) pris for alt.
+Sjekker også om drop14 i v_prislop_products overstiger
+EXTREME_DROP14_THRESHOLD (standard 50%) — to av to tidligere fall i den
+størrelsen har vært parser-bugger, ikke ekte salg (se migrasjon 0019).
 Feiler steget, stoppes også utsending av prisvarsler og dødmannspinget
 uteblir, slik at healthchecks.io varsler.
 """
@@ -20,6 +23,13 @@ PRICE_SHARE_THRESHOLD = float(os.environ.get("PRICE_SHARE_THRESHOLD") or "0.8")
 # Under denne mengden tilbud er andels-tallet for støyende til å si noe (en
 # butikk med 3 tilbud i samme pris er ikke uvanlig).
 PRICE_SHARE_MIN_OFFERS = int(os.environ.get("PRICE_SHARE_MIN_OFFERS") or "10")
+# drop14 (v_prislop_products, se migrasjon 0019) har bevisst INGEN cap lenger
+# — sparklinen har aldri hatt tak, og et ekte stort fall skal vises som det
+# er. Men hos oss har 2 av 2 tidligere fall i denne størrelsen (Bull-
+# fraktbanneret, XXL isSelected-bugen) vært parser-bugger, ikke salg — så et
+# fall over terskelen skal fanges av et menneske før prisvarsler går ut,
+# ikke publiseres blindt.
+EXTREME_DROP14_THRESHOLD = float(os.environ.get("EXTREME_DROP14_THRESHOLD") or "0.5")
 
 
 def check_price_concentration(cur) -> bool:
@@ -66,6 +76,36 @@ def check_price_concentration(cur) -> bool:
     return False
 
 
+def check_extreme_drop14(cur) -> bool:
+    """True hvis OK. Flagger produkter der drop14 > EXTREME_DROP14_THRESHOLD
+    i v_prislop_products — se migrasjon 0019 for hvordan drop14 beregnes
+    (medianbasislinje, debut-vakt, ingen cap). Feiler kjøringen i stedet for
+    å klippe tallet stille, slik at et menneske ser det før prisvarsler
+    sendes ut."""
+    cur.execute(
+        """
+        select brand, model, gender, from_price, drop14
+        from public.v_prislop_products
+        where drop14 > %s
+        order by drop14 desc
+        """,
+        (EXTREME_DROP14_THRESHOLD,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return True
+
+    for brand, model, gender, from_price, drop14 in rows:
+        print(
+            f"FEIL: {brand} {model} ({gender}): drop14={drop14:.0%} "
+            f"(nå {from_price} kr) — sjekk om dette er et ekte prisfall før "
+            "det publiseres. To av to tidligere fall i denne størrelsen har "
+            "vært parser-bugger, ikke salg.",
+            file=sys.stderr,
+        )
+    return False
+
+
 def main() -> int:
     conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
     conn.autocommit = True
@@ -90,6 +130,7 @@ def main() -> int:
     print(f"Denne kjøringen: products={products} offers={offers}")
 
     ok = check_price_concentration(cur)
+    ok = check_extreme_drop14(cur) and ok
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")

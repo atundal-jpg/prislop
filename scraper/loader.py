@@ -353,9 +353,14 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, cache: RunCache
                 "delete from prislop.price_history where offer_id = %s and observed_at >= %s",
                 (offer_id, run_ts),
             )
+        sizes_in_stock = sum(1 for s in rec.get("sizes", []) if s.get("in_stock"))
         cur.execute(
-            "insert into prislop.price_history (offer_id, price, currency) values (%s, %s, %s)",
-            (offer_id, price, currency),
+            """
+            insert into prislop.price_history
+                (offer_id, price, currency, in_stock, sizes_in_stock)
+            values (%s, %s, %s, %s, %s)
+            """,
+            (offer_id, price, currency, any_stock, sizes_in_stock),
         )
     return offer_id, True
 
