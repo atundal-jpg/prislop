@@ -1231,7 +1231,8 @@ async function loadBody(card){
       sizeCache[pid]   || (sizeCache[pid]   = await fetchSizes(pid)),
       seriesCache[pid] || (seriesCache[pid] = await fetchSeries(pid)),
     ]);
-    body.innerHTML = sparkHTML(series) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
+    const product = PRODUCTS.find(p => p.product_id === pid);
+    body.innerHTML = sparkHTML(series, product) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
   }catch(e){
     body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
       + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
@@ -1246,7 +1247,7 @@ async function loadBody(card){
    ellers en «samler historikk»-placeholder. Datatettheten øker etter hvert
    som harvestene blir stabile, så tynne produkter tenner av seg selv. */
 var SPARK_MIN_POINTS = 4;
-function sparkHTML(series){
+function sparkHTML(series, product){
   if(!series || series.length < SPARK_MIN_POINTS){
     return '<div class="spark-thin">Samler prishistorikk … kurven vises når vi har flere dager med data.</div>';
   }
@@ -1271,13 +1272,29 @@ function sparkHTML(series){
   // laveste punkt (siste forekomst av min)
   var loIdx=0; for(var i=1;i<pts.length;i++){ if(pts[i].p<=pts[loIdx].p) loIdx=i; }
   var loX=x(loIdx).toFixed(1), loY=y(pts[loIdx].p).toFixed(1);
-  // delta siste 14 dager (eldste innenfor vindu vs nyeste)
+  // Delta-tekst: drop14 (v_prislop_products) er nå en robust, produktnivå-
+  // beregning (medianbasislinje + debut-vakt, se migrasjon 0019) som denne
+  // enkle klient-side sammenligningen ikke kan gjenskape nøyaktig. For at
+  // prisfall-badgen og denne spark-header-teksten ALDRI skal sprike (samme
+  // produkt skal alltid vise samme prosent), leser vi drop14 direkte når
+  // produktet har et registrert fall — kun retningen (opp/uendret) for
+  // ikke-fall-tilfeller beregnes fortsatt lokalt fra serien, siden drop14
+  // per design er gulvet på 0 og ikke skiller "uendret" fra "økt".
   var last=pts[pts.length-1], cutoff=new Date(last.d); cutoff.setDate(cutoff.getDate()-14);
   var base=pts[0];
   for(var j=0;j<pts.length;j++){ if(new Date(pts[j].d) >= cutoff){ base=pts[j]; break; } }
-  var pct = base.p ? Math.round(((last.p-base.p)/base.p)*100) : 0;
-  var cls = pct< -1 ? "down" : (pct> 1 ? "up" : "flat");
-  var deltaTxt = pct=== 0 ? "uendret" : (pct>0?"+":"")+pct+" %";
+  var naivePct = base.p ? Math.round(((last.p-base.p)/base.p)*100) : 0;
+  var drop14 = Number(product && product.drop14) || 0;
+  var pct, cls, deltaTxt;
+  if(drop14 > 0){
+    pct = Math.round(drop14*100);
+    cls = "down";
+    deltaTxt = "-"+pct+" %";
+  }else{
+    pct = naivePct;
+    cls = pct< -1 ? "down" : (pct> 1 ? "up" : "flat");
+    deltaTxt = pct=== 0 ? "uendret" : (pct>0?"+":"")+pct+" %";
+  }
   var isLowNow = last.p <= lo + 0.5;
   return ''
     + '<div class="spark">'
