@@ -775,7 +775,8 @@ function prisfallAeoAnswer(){
   if(!list.length) return "Ingen løpesko har falt merkbart i pris siste 14 dager akkurat nå. Lista oppdateres hver 6. time — sjekk igjen senere.";
   const b = list[0];
   return "Akkurat nå har " + list.length + " modeller falt i pris siste 14 dager hos Prisløp. Størst fall har "
-    + b.brand + " " + b.model + ", ned " + dropPct(b) + " % til " + nok(b.from_price) + " kr"
+    + b.brand + " " + b.model + ", ned " + dropPct(b) + " %"
+    + (b.from_price!=null ? " til " + nok(b.from_price) + " kr" : "")
     + (b.n_stores ? " (" + b.n_stores + " butikker sammenlignet)" : "")
     + ". Prisene oppdateres hver 6. time.";
 }
@@ -1105,14 +1106,17 @@ function currentList(){
     if(ids) list = list.filter(p => ids.has(p.product_id));
   }
   const s = filters.sort;
+  // from_price er null når ingen tilbud faktisk er på lager (0014) — sorter
+  // slike modeller sist i stedet for at null||0 gjør dem til "billigst".
+  const fp = p => p.from_price==null ? Infinity : p.from_price;
   // I prisfall-modus betyr «Anbefalt» størst prisfall først — det ER sidens
   // premiss. Velger brukeren en annen sortering, respekteres den.
   list.sort((a,b) =>
-    (filters.prisfall && s==="rank") ? Number(b.drop14||0)-Number(a.drop14||0) || (a.from_price||0)-(b.from_price||0)
-    : s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || (a.from_price||0)-(b.from_price||0)
-    : s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || (a.from_price||0)-(b.from_price||0)
+    (filters.prisfall && s==="rank") ? Number(b.drop14||0)-Number(a.drop14||0) || fp(a)-fp(b)
+    : s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || fp(a)-fp(b)
+    : s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || fp(a)-fp(b)
     : s==="name" ? String(a.model).localeCompare(String(b.model),"nb")
-    : (a.from_price||0)-(b.from_price||0));
+    : fp(a)-fp(b));
   return list;
 }
 
@@ -1169,7 +1173,7 @@ function cardHTML(p){
   +       '<div class="p-id"><div class="brand">'+esc(p.brand)+'</div>'
   +          '<h3>'+esc(p.model)+'</h3><div class="sub">'+sub+'</div></div>'
   +       '<div class="from"><div class="lbl">Lavest nå</div>'
-  +          '<div class="val">'+nok(p.from_price)+'&nbsp;<span>kr</span></div></div>'
+  +          '<div class="val">'+(p.from_price!=null ? nok(p.from_price) : '–')+'&nbsp;<span>kr</span></div></div>'
   +       '<div class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'
   +     '</div>'
   +   '</button>'
