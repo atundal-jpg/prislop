@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
 """
-probe_oslosportslager.py (v1) — GO/NO-GO: kan Oslo Sportslager (oslosportslager.no)
+probe_oslosportslager.py (v2) — GO/NO-GO: kan Oslo Sportslager (oslosportslager.no)
 tas inn i katalogen? Helt ny butikk, ukjent plattform (URL-mønster tyder på en
 .aspx-basert nettbutikkløsning, altså IKKE samme plattform som noen av de 8 vi
 allerede har).
 
-Kjente URL-er (websøk, ikke verifisert live herfra — dette miljøet har ikke
-egress til butikken, derfor kjøres selve proben via probe.yml):
-  Kategori: /produktkategori/joggesko-2-2751.aspx (hoved-LØPESKO)
-            /produktkategori/<pronasjon/type>-<kjønn>-4-<id>.aspx (underkategorier)
-  Produkt:  /produkt/<slug>-<varenr>.aspx
+v1-funn (15. juli):
+  - / og kategorisida svarer HTTP 200 uten bot-blokk.
+  - Kategorisida (/produktkategori/joggesko-2-2751.aspx) ga 0 produktlenker
+    med /produkt/…\.aspx-mønsteret -> enten annet lenkemønster, eller listen
+    er klient-rendret (AJAX, som Foss).
+  - 2 av 3 PDP-er (58915, 61292 — nyere Gel-Nimbus-årganger fra websøk) ga
+    114018 B, MISTENKELIG likt kategorisidas 114015 B -> sannsynligvis samme
+    generiske mal (produkt utilgjengelig/utgått), ikke ekte produktinnhold.
+  - Den ENE PDP-en som avvek i størrelse (52868, 118244 B) ga 8 EAN-13-
+    kandidater i rå HTML, men INGEN JSON-LD og INGEN <select> som traff
+    størrelse/size-regexen -> bro-dataen finnes, men ikke der v1 lette.
 
-v1 svarer på det samme vi alltid trenger før en butikk kan kobles på:
-  1) ENUMERERING: gir hovedkategorien (evt. + underkategorier) alle løpesko,
-     og hvordan paginerer den (server-side ?page=/side=, eller alt på én side)?
-  2) BRO-DATA PÅ PDP: finnes JSON-LD (Product/Offer) med gtin/EAN? Hvis ikke,
-     finnes artikkelnummer i URL/markup vi kan bruke i stedet?
-  3) STØRRELSER + LAGER: er størrelser en <select>, eller lenker til egne
-     varenr-sider (som Brukås/Foss)? Er lagerstatus synlig per størrelse, og
-     med hvilke ord (på lager/utsolgt/restlager/kun N igjen)?
-  4) Robots/sitemap som alternativ enumereringskilde.
+v2 graver i akkurat disse tre hullene:
+  A) Kategorisida: dump ALLE .aspx-hrefs (uansett mønster) + evt. AJAX/JSON-
+     hint i <script>, for å finne det ekte produktlenke-mønsteret.
+  B) Den avvikende PDP-en (52868): dump rå HTML-kontekst rundt HVER EAN-
+     kandidat, for å se hvilken struktur (skjult <select>, data-attributter,
+     JS-array) som faktisk bærer størrelse+EAN+lager.
+  C) Bekreft mistanken om at 58915/61292 er stale/soft-404: sammenlign
+     <title>/<h1> mot 52868 og kategorisida.
 
 Stdlib only. probe.yml (script=probe_oslosportslager.py).
 """
@@ -46,10 +51,23 @@ PDPS = [
 LD = re.compile(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
 EAN_RE = re.compile(r'\b(\d{13})\b')
 PROD_LINK = re.compile(r'href="([^"#?]*/produkt/[^"#?]+\.aspx[^"#?]*)"', re.I)
+ANY_ASPX_HREF = re.compile(r'href="([^"#?]+\.aspx[^"#?]*)"', re.I)
 PAGER = re.compile(r'[?&](?:page|side)=(\d+)', re.I)
 SELECT = re.compile(r'<select\b.*?</select>', re.S | re.I)
+TITLE_RE = re.compile(r'<title[^>]*>(.*?)</title>', re.S | re.I)
+H1_RE = re.compile(r'<h1[^>]*>(.*?)</h1>', re.S | re.I)
 STOCK_WORDS = ["på lager", "utsolgt", "restlager", "kun \\d+ igjen", "ikke på lager",
                "sistemann", "få igjen", "leveringstid"]
+
+
+def _clean(s):
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def page_identity(html):
+    t = TITLE_RE.search(html)
+    h = H1_RE.search(html)
+    return _clean(t.group(1)) if t else "(ingen title)", _clean(h.group(1)) if h else "(ingen h1)"
 
 
 def get(path, cap=None):
@@ -92,27 +110,52 @@ def probe_category():
     if not html:
         print("  INGEN respons — kan ikke vurdere paginering/produktlenker herfra.")
         return []
+    title, h1 = page_identity(html)
+    print("  <title>: %r   <h1>: %r" % (title, h1))
+
     links = []
     seen = set()
     for h in PROD_LINK.findall(html):
         if h not in seen:
             seen.add(h)
             links.append(h)
-    print("  Produktlenker på side 1: %d" % len(links))
+    print("  Produktlenker (mønster /produkt/…\\.aspx) på side 1: %d" % len(links))
     for h in links[:8]:
         print("    ", h)
+
+    # A) Løsere sjekk: ALLE .aspx-hrefs, uavhengig av mønster — for å finne
+    # det ekte produktlenke-formatet hvis PROD_LINK bommet.
+    all_aspx = []
+    seen2 = set()
+    for h in ANY_ASPX_HREF.findall(html):
+        if h not in seen2:
+            seen2.add(h)
+            all_aspx.append(h)
+    print("  ALLE .aspx-hrefs på sida: %d (unike)" % len(all_aspx))
+    for h in all_aspx[:25]:
+        print("    ", h)
+
+    # B) AJAX/JSON-hint: skript med produktdata (Knockout/Vue/inline JSON).
+    hints = re.findall(r'(GetProdukt\w*|LoadProdukt\w*|produktliste\w*|ProductList\w*|ko\.observableArray|\.ajax\(|fetch\()', html, re.I)
+    if hints:
+        print("  AJAX/JS-produktliste-hint i markup: %s" % sorted(set(hints)))
+    else:
+        print("  Ingen åpenbare AJAX-hint (GetProdukt/ProductList/ko.observableArray/.ajax/fetch) i markup.")
+
     pages = sorted(set(int(p) for p in PAGER.findall(html)))
     print("  Paginerings-parametre funnet i markup: %s" % (pages or "INGEN (kan bety alt-på-én-side ELLER klient-side paginering)"))
     return links
 
 
-def probe_pdp(path):
+def probe_pdp(path, dump_ean_context=False):
     print("\n" + "-" * 74)
     print("PDP:", path)
     st, html, _ = get(path)
     print("  HTTP %s, %d B" % (st, len(html)))
     if not html:
         return False
+    title, h1 = page_identity(html)
+    print("  <title>: %r   <h1>: %r" % (title, h1))
     ok_ld = False
     for blk in LD.findall(html):
         try:
@@ -154,6 +197,16 @@ def probe_pdp(path):
 
     eans = sorted(set(EAN_RE.findall(html)))
     print("  EAN-kandidater (13-sifret) (%d):" % len(eans), eans[:8] or "INGEN")
+    if dump_ean_context and eans:
+        print("  --- rå kontekst rundt HVER EAN-kandidat (300 tegn før/etter) ---")
+        for ean in eans:
+            idx = html.find(ean)
+            if idx < 0:
+                continue
+            region = html[max(0, idx - 300):idx + len(ean) + 300]
+            print("  [EAN %s]" % ean)
+            print("   ", re.sub(r"\s+", " ", region).strip()[:700])
+        print("  --- slutt EAN-kontekst ---")
 
     varenr = re.search(r"[Vv]arenr\S*[:\s]*([A-Za-z0-9\-]+)", html)
     if varenr:
@@ -171,26 +224,30 @@ def probe_pdp(path):
 
 
 def main():
-    print("probe_oslosportslager v1 — GO/NO-GO for ny butikk (helt ukjent plattform)\n")
+    print("probe_oslosportslager v2 — GO/NO-GO for ny butikk (helt ukjent plattform)\n")
     probe_platform()
     links = probe_category()
     got_bridge = False
     tried = list(dict.fromkeys(links[:2] + PDPS))
     for p in tried[:5]:
-        got_bridge = probe_pdp(p) or got_bridge
+        # Dump EAN-konteksten for den kjente avvikeren (52868) — det er den
+        # eneste v1 så EAN-treff på, og v2 skal forklare STRUKTUREN rundt dem.
+        dump = "52868" in p
+        got_bridge = probe_pdp(p, dump_ean_context=dump) or got_bridge
 
     print("\n" + "=" * 78)
     print("GO/NO-GO:")
     print("  Kategoriside ga produktlenker: %s" % bool(links))
     print("  Minst én PDP ga EAN eller artikkelkode (bro-data): %s" % got_bridge)
     if links and got_bridge:
-        print("  => Foreløpig GO — men v2 må avklare paginering (full katalog) og")
+        print("  => Foreløpig GO — men v3 må avklare paginering (full katalog) og")
         print("     om størrelse+lager er en <select> (fiks A, billig) eller krever")
         print("     egne varenr-sider per størrelse (fiks B, som Brukås/Foss).")
     else:
         print("  => NO-GO ennå — mangler enten enumerering eller bro-data. Se rå")
-        print("     utskrift over for hva som faktisk kom tilbake (evt. blokkert av")
-        print("     bot-vern — sjekk HTTP-status og byte-lengde på hvert kall).")
+        print("     utskrift over for hva som faktisk kom tilbake — spesielt <title>/")
+        print("     <h1> per side (avslører om URL-er faktisk er stale/soft-404) og")
+        print("     ALLE .aspx-hrefs på kategorisida (ekte produktlenke-mønster).")
 
 
 if __name__ == "__main__":
