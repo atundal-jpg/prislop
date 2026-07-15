@@ -2,7 +2,7 @@
 
 ## Hva dette er
 Prisløp (prisløp.no, punycode `xn--prislp-fya.no`) er en prissammenligningstjeneste
-for løpesko fra 8 norske nettbutikker: laveste pris per modell, lagerstatus per
+for løpesko fra 9 norske nettbutikker: laveste pris per modell, lagerstatus per
 størrelse, prishistorikk og e-postvarsler ved prisfall. All tekst mot brukere er
 på norsk (nb).
 

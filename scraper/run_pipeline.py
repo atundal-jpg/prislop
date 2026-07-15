@@ -36,11 +36,12 @@ from fetch import Fetcher
 
 # Merker × modeller vi jakter på. Butikker som ikke fører et merke gir [] fra
 # discovery (by_brand-gate) og hopper stille videre.
-# NB: Alle 8 aktive butikker kjører take-all/cachede discovery-moduser, så
+# NB: Alle 9 aktive butikker kjører take-all/cachede discovery-moduser, så
 # MODELS-listene er i praksis INERTE for discovery (hele merkekatalogen hentes
 # uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
 BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun", "New Balance", "Brooks", "Mizuno"]
-STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss"]   # de feed-løse butikkene
+STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss",
+          "oslosportslager"]   # de feed-løse butikkene
 
 MODELS = {
     "Asics": [
