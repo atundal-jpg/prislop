@@ -31,6 +31,9 @@
 --     serie (drop14_daily under). Et fall kan aldri rapporteres fra et
 --     tilbud som ikke setter from_price — "i dag"-siden av sammenligningen
 --     bruker alltid nøyaktig from_price sitt filter (ferske, on-lager).
+--     Fremover-fyllingen i drop14_daily bruker samme ankring til
+--     offers.last_seen_at (ikke et fast 14-dagers vindu) som 0018 sin BUG 4-
+--     fiks — se drop14_store_last_seen under.
 --
 -- (b) KJØPBARHET: når price_history.in_stock er kjent (0017, ikke NULL),
 --     telles kun tilbud som var på lager. NULL (all historikk før 0017)
@@ -191,6 +194,22 @@ drop14_obs as (
   ) x
   where price is not null
 ),
+drop14_store_last_seen as (
+  -- Samme fiks som 0018 BUG 4: fremover-fylling ankres til siste bekreftede
+  -- dag (offers.last_seen_at), ikke et fast 14-dagers vindu fra siste
+  -- prisendring. Uten dette faller en fortsatt-aktiv, bare-prisstabil butikk
+  -- ut av drop14_daily etter 14 dager og kan sette en falsk basislinje eller
+  -- et falskt hull, akkurat som Gel-FujiSetsu 3 GTX-saken i
+  -- v_prislop_price_series (0018) — bare her ville det forurenset
+  -- medianbasislinjen (c) direkte i stedet for bare sparklinen.
+  select
+    va.product_id,
+    ofr.store_id,
+    max((ofr.last_seen_at at time zone 'Europe/Oslo')::date) as last_seen_day
+  from prislop.offers ofr
+  join prislop.variants va on va.id = ofr.variant_id
+  group by va.product_id, ofr.store_id
+),
 drop14_bounds as (
   select product_id, min(day) as first_day
   from drop14_obs
@@ -213,17 +232,18 @@ drop14_pairs as (
 drop14_filled as (
   select
     p.product_id, p.day, p.store_id,
-    (
+    case when p.day <= sls.last_seen_day then (
       select o2.price
       from drop14_obs o2
       where o2.product_id = p.product_id
         and o2.store_id = p.store_id
         and o2.day <= p.day
-        and o2.day >  p.day - interval '14 days'
       order by o2.day desc
       limit 1
-    ) as ff_price
+    ) else null end as ff_price
   from drop14_pairs p
+  left join drop14_store_last_seen sls
+    on sls.product_id = p.product_id and sls.store_id = p.store_id
 ),
 drop14_daily as (
   -- Daglig minpris, produktnivå, kjent-lager-filtrert. IKKE det offentlige
