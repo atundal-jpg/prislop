@@ -125,7 +125,12 @@ def parse(html: str, url: str) -> list[dict]:
 
         product_id = product.get("ProductId")
         lp = product.get("LP")
-        price = round(lp / 100.0, 2) if isinstance(lp, (int, float)) else None
+        # Butikken prises reelt med øre (bekreftet: Wave Skyrise 4 dame er
+        # faktisk 999,50 kr), men resten av katalogen har alltid hele kroner
+        # — avrund bevisst til nærmeste krone her for konsistent visning
+        # på tvers av butikker (~50 øre presisjon er uvesentlig for laveste-
+        # pris-sammenligningen).
+        price = round(lp / 100.0) if isinstance(lp, (int, float)) else None
 
         product_line = re.sub(r"\s*\d+.*$", "", model).strip().lower().replace(" ", "-") or None
 
