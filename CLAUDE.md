@@ -38,11 +38,24 @@ på norsk (nb).
    oppdateres sammen når butikk-filtre legges til eller fjernes (jf.
    0012/0013-karantenehistorikken). `v_prislop_offers` har aldri hatt
    butikk-eksklusjoner.
-5. **Frontend-mønsteret bevares:** én fil, ingen rammeverk. Nye landingssider
+5. **Enhver endring på `v_prislop_products` eller `v_prislop_price_series`
+   skal, FØR den anvendes mot prod, ha:**
+   1. `EXPLAIN ANALYZE` som bekrefter kjøretid godt under `anon`-rollens
+      3s statement_timeout, og
+   2. en dublett-sjekk: `select count(*) from (select product_id, day
+      from public.v_prislop_price_series group by product_id, day having
+      count(*) > 1) t;` → skal gi 0.
+
+   Begrunnelse (to prod-hendelser på rad, 15. juli): 0018 felte nettsiden
+   på ytelse (korrelert subquery per dag, 8–11s mot 3s timeout); 0020 ga
+   en dublett i-dag-rad for 538/861 produkter (forward-fill-utvidelsen
+   kolliderte med dagens live rad). Begge ville vært fanget av disse to
+   sjekkene.
+6. **Frontend-mønsteret bevares:** én fil, ingen rammeverk. Nye landingssider
    følger `?kategori`-mønsteret — `history.replaceState`, egen
    title/canonical/OG/meta, CollectionPage/ItemList-JSON-LD, og en synlig
    AEO-linje på siden som er identisk med teksten i FAQPage-schemaet.
-6. **Utgående butikklenker i UI går alltid via `/ut`-redirecten** (`outUrl`) —
+7. **Utgående butikklenker i UI går alltid via `/ut`-redirecten** (`outUrl`) —
    aldri direkte butikk-URL. JSON-LD beholder derimot bevisst direkte
    butikk-URL-er (SEO + ren statistikk).
 
