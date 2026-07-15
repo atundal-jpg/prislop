@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
 """
-probe_oslosportslager.py (v2) — GO/NO-GO: kan Oslo Sportslager (oslosportslager.no)
+probe_oslosportslager.py (v3) — GO/NO-GO: kan Oslo Sportslager (oslosportslager.no)
 tas inn i katalogen? Helt ny butikk, ukjent plattform (URL-mønster tyder på en
 .aspx-basert nettbutikkløsning, altså IKKE samme plattform som noen av de 8 vi
 allerede har).
 
-v1-funn (15. juli):
-  - / og kategorisida svarer HTTP 200 uten bot-blokk.
-  - Kategorisida (/produktkategori/joggesko-2-2751.aspx) ga 0 produktlenker
-    med /produkt/…\.aspx-mønsteret -> enten annet lenkemønster, eller listen
-    er klient-rendret (AJAX, som Foss).
-  - 2 av 3 PDP-er (58915, 61292 — nyere Gel-Nimbus-årganger fra websøk) ga
-    114018 B, MISTENKELIG likt kategorisidas 114015 B -> sannsynligvis samme
-    generiske mal (produkt utilgjengelig/utgått), ikke ekte produktinnhold.
-  - Den ENE PDP-en som avvek i størrelse (52868, 118244 B) ga 8 EAN-13-
-    kandidater i rå HTML, men INGEN JSON-LD og INGEN <select> som traff
-    størrelse/size-regexen -> bro-dataen finnes, men ikke der v1 lette.
+v1-funn (15. juli): / og kategorisida svarer 200 uten bot-blokk. Kategorisida
+ga 0 produktlenker. 2 av 3 gjettede PDP-URL-er (fra websøk-cache) ga en
+mistenkelig identisk, tom mal (114018 B ~= kategorisidas 114015 B).
 
-v2 graver i akkurat disse tre hullene:
-  A) Kategorisida: dump ALLE .aspx-hrefs (uansett mønster) + evt. AJAX/JSON-
-     hint i <script>, for å finne det ekte produktlenke-mønsteret.
-  B) Den avvikende PDP-en (52868): dump rå HTML-kontekst rundt HVER EAN-
-     kandidat, for å se hvilken struktur (skjult <select>, data-attributter,
-     JS-array) som faktisk bærer størrelse+EAN+lager.
-  C) Bekreft mistanken om at 58915/61292 er stale/soft-404: sammenlign
-     <title>/<h1> mot 52868 og kategorisida.
+v2-funn (15. juli), det STORE funnet: den ENE PDP-en som faktisk traff
+(asics-gel-nimbus-22…-52868.aspx) har INGEN JSON-LD, men et rått inline
+JSON-blob i markupen med nøyaktig den bro-dataen vi trenger — PER STØRRELSE:
+    {"Id": 293022, "Qty": 3, "GTIN": [4550215825487], "Size": "37"}
+Dvs. EAN + EKSAKT LAGERANTALL (ikke bare på-lager/utsolgt) rett i HTML-en,
+gruppert per fargevariant (Color/ColorId/Pic). Dette er bedre bro-data enn de
+fleste av de 8 eksisterende butikkene har. MEN: kategorisida ga fOne 0 lenker
+(hverken PROD_LINK-mønsteret eller NOEN .aspx-href i det hele tatt), og de to
+andre PDP-ene var tomme maler — altså vet vi ikke ennå hvordan man ENUMERERER
+produktene i stor skala, og de to døde URL-ene kan bety at websøk-cachen er
+utdatert (ikke at plattformen er ustabil).
+
+v3 tester det opplagte neste steget: robots.txt pekte allerede på
+https://oslosportslager.no/sitemap.xml (samme mønster som løste Foss Sport-
+enumereringen). Henter sitemapen (følger evt. indeks), filtrerer på
+/produkt/…\.aspx, og re-prober 3 FERSKE URL-er derfra (garantert ekte, ikke
+websøk-cache) for samme JSON-blob-struktur.
 
 Stdlib only. probe.yml (script=probe_oslosportslager.py).
 """
@@ -100,6 +101,44 @@ def probe_platform():
     if not sm_urls:
         st2, sm, _ = get("/sitemap.xml")
         print("  /sitemap.xml -> HTTP %s, %d B" % (st2, len(sm)))
+    return sm_urls or [BASE + "/sitemap.xml"]
+
+
+LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+SITEMAP_PROD_RE = re.compile(r"/produkt/[^\"'<>\s]+\.aspx", re.I)
+
+
+def probe_sitemap(sm_urls):
+    print("\n" + "=" * 78)
+    print("A) SITEMAP-ENUMERERING (robots.txt pekte hit — samme mønster som løste Foss)")
+    prod_urls, all_locs = [], []
+    queue, visited = list(sm_urls), 0
+    while queue and visited < 12:
+        sm = queue.pop(0)
+        visited += 1
+        st, xml, _ = get(sm, cap=8_000_000)
+        locs = LOC_RE.findall(xml)
+        children = [l for l in locs if l.lower().endswith(".xml")]
+        if children:
+            print("  INDEKS %s -> HTTP %s, %d under-sitemaps" % (sm, st, len(children)))
+            queue.extend(children[:12])
+            continue
+        print("  %s -> HTTP %s, %d URL-er" % (sm, st, len(locs)))
+        all_locs.extend(locs)
+    for loc in all_locs:
+        if SITEMAP_PROD_RE.search(loc):
+            prod_urls.append(loc)
+    print("  TOTALT <loc>-er i sitemap(ene): %d" % len(all_locs))
+    print("  Herav /produkt/…\\.aspx-URL-er: %d" % len(prod_urls))
+    for u in prod_urls[:8]:
+        print("    ", u)
+    if prod_urls:
+        print("  => discovery kan enumerere hele katalogen fra sitemap (samme fiks som Foss).")
+    else:
+        print("  => Sitemap ga ingen produkt-URL-er i dette formatet — se rå <loc>-eksempler:")
+        for l in all_locs[:8]:
+            print("    ", l)
+    return prod_urls
 
 
 def probe_category():
@@ -220,29 +259,46 @@ def probe_pdp(path, dump_ean_context=False):
             stock[w] = n
     print("  Lager-ord i markup:", stock or "INGEN treff")
 
-    return bool(eans) or bool(varenr)
+    # v2-funn: lager per størrelse kommer IKKE som norsk tekst, men som et
+    # "Qty": <tall> JSON-felt inline i en variant-blob (se dump_ean_context).
+    qtys = [int(q) for q in re.findall(r'"Qty":\s*(\d+)', html)]
+    if qtys:
+        print("  [C] \"Qty\": N -funn (per størrelse/variant): %d, herav på lager (>0): %d"
+              % (len(qtys), sum(1 for q in qtys if q > 0)))
+
+    return bool(eans) or bool(varenr) or bool(qtys)
 
 
 def main():
-    print("probe_oslosportslager v2 — GO/NO-GO for ny butikk (helt ukjent plattform)\n")
-    probe_platform()
+    print("probe_oslosportslager v3 — GO/NO-GO for ny butikk (helt ukjent plattform)\n")
+    sm_urls = probe_platform()
+    sitemap_prods = probe_sitemap(sm_urls)
     links = probe_category()
+
     got_bridge = False
-    tried = list(dict.fromkeys(links[:2] + PDPS))
-    for p in tried[:5]:
-        # Dump EAN-konteksten for den kjente avvikeren (52868) — det er den
-        # eneste v1 så EAN-treff på, og v2 skal forklare STRUKTUREN rundt dem.
-        dump = "52868" in p
+    # Prioriter FERSKE URL-er fra sitemapen (garantert ekte) foran de gjettede
+    # websøk-URL-ene (2 av 3 viste seg å være stale/tomme i v1/v2).
+    tried = list(dict.fromkeys(sitemap_prods[:3] + links[:2] + PDPS))
+    for p in tried[:6]:
+        # Dump EAN-konteksten for den kjente avvikeren (52868) og for de nye
+        # sitemap-URL-ene — vi vil se variant-blob-strukturen på flere produkter.
+        dump = "52868" in p or p in sitemap_prods[:3]
         got_bridge = probe_pdp(p, dump_ean_context=dump) or got_bridge
 
     print("\n" + "=" * 78)
     print("GO/NO-GO:")
+    print("  Sitemap ga produkt-URL-er: %s (%d)" % (bool(sitemap_prods), len(sitemap_prods)))
     print("  Kategoriside ga produktlenker: %s" % bool(links))
-    print("  Minst én PDP ga EAN eller artikkelkode (bro-data): %s" % got_bridge)
-    if links and got_bridge:
-        print("  => Foreløpig GO — men v3 må avklare paginering (full katalog) og")
-        print("     om størrelse+lager er en <select> (fiks A, billig) eller krever")
-        print("     egne varenr-sider per størrelse (fiks B, som Brukås/Foss).")
+    print("  Minst én PDP ga EAN/artikkelkode/Qty-felt (bro-data): %s" % got_bridge)
+    if sitemap_prods and got_bridge:
+        print("  => GO — sitemap enumererer katalogen (som Foss), og PDP-en har EAN +")
+        print("     eksakt lagerantall PER STØRRELSE inline i et JSON-blob (rikere bro-")
+        print("     data enn tekst-baserte på-lager/utsolgt-ord). Neste steg er en egen")
+        print("     parser: isoler variant-blob-en robust (samme JS-nøkler over flere")
+        print("     produkter?) og bekreft fargevariant-gruppering (Color/ColorId/Pic).")
+    elif links and got_bridge:
+        print("  => Foreløpig GO via kategorisida — men sitemap ga ingenting; avklar")
+        print("     enumerering før parser skrives.")
     else:
         print("  => NO-GO ennå — mangler enten enumerering eller bro-data. Se rå")
         print("     utskrift over for hva som faktisk kom tilbake — spesielt <title>/")
