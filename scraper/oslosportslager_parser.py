@@ -37,13 +37,15 @@ La Sportiva, Nnormal, Rossignol, Salming, Arc'Teryx, Columbia Montrail,
 Scarpa, Topo, Vj og Xtep — alle ekte løpe-/trailsko, ikke feilklassifiserte
 produkter (verifisert mot live URL-er, f.eks. «snowspike-cswp-lopesko-med-
 pigg-unisex»). De holdes likevel UTE inntil videre: resten av katalogen
-(Torshov/Löplabbet/Intersport/Sport1) er kun probet og skrudd på for de 10
-etablerte merkene i run_pipeline.BRANDS. Uten en tilsvarende sjekk der ville
-Oslo Sportslager blitt eneste kilde for disse merkene, og "billigst pris"
-ville sett ut som en ekte sammenligning når den egentlig bare er én butikk.
-Filteret her matcher discovery.py sin by_brand-gate — de to må holdes i
-sync manuelt siden URL-en (i motsetning til Foss/Torshov) ikke avslører
-merket, så gatingen ikke kan skje før parsing.
+(Torshov/Löplabbet/Intersport/Sport1) er kun probet og skrudd på for
+merkene i brands.BRANDS. Uten en tilsvarende sjekk der ville Oslo
+Sportslager blitt eneste kilde for disse merkene, og "billigst pris" ville
+sett ut som en ekte sammenligning når den egentlig bare er én butikk.
+Filteret her og discovery.py sin by_brand-gate for denne butikken er begge
+avledet fra brands.BRANDS (ikke hardkodet hver for seg), så de kan ikke
+drive fra hverandre lenger — men merk at gatingen i discovery.py likevel
+ikke er den reelle håndhevingen (URL-en avslører aldri merket), det er
+ALLOWED_BRANDS her.
 """
 
 from __future__ import annotations
@@ -51,12 +53,13 @@ import html as _html
 import json
 import re
 
+import brands
+
 BLOB_MARK = "let b = "
 
-# Samme 10-merkeliste som run_pipeline.BRANDS / discovery.py sin by_brand-gate
-# for denne butikken — hold i sync manuelt hvis den listen endres.
-ALLOWED_BRANDS = {"asics", "adidas", "saucony", "nike", "hoka", "puma",
-                  "kiprun", "new balance", "brooks", "mizuno"}
+# Avledet fra brands.BRANDS (samme kilde som discovery.py sin by_brand-gate
+# for denne butikken og run_pipeline sin BRANDS-loop) — se modul-docstring.
+ALLOWED_BRANDS = {b.lower() for b in brands.BRANDS}
 
 SHOE_RE = re.compile(r"(løpe|terreng|fjell|jogge|trail|konkurranse)sko", re.I)
 KIDS_RE = re.compile(r"\b(PS|GS|TS|TD)\b")
