@@ -31,6 +31,19 @@ Filtre: kun løpe-/terrengsko (Header må inneholde et sko-kategoriord —
 merke-/kategorikoder som Fedas varierer for mye til å være et pålitelig
 filter alene, så Header-teksten er sannheten, som i foss_parser), og ingen
 barn (barn/junior i kjønnsteksten, eller PS/GS/TS/TD i modellnavnet).
+
+Merke-allowlist (16. juli): butikken bærer også Salomon, Craft, Dynafit,
+La Sportiva, Nnormal, Rossignol, Salming, Arc'Teryx, Columbia Montrail,
+Scarpa, Topo, Vj og Xtep — alle ekte løpe-/trailsko, ikke feilklassifiserte
+produkter (verifisert mot live URL-er, f.eks. «snowspike-cswp-lopesko-med-
+pigg-unisex»). De holdes likevel UTE inntil videre: resten av katalogen
+(Torshov/Löplabbet/Intersport/Sport1) er kun probet og skrudd på for de 10
+etablerte merkene i run_pipeline.BRANDS. Uten en tilsvarende sjekk der ville
+Oslo Sportslager blitt eneste kilde for disse merkene, og "billigst pris"
+ville sett ut som en ekte sammenligning når den egentlig bare er én butikk.
+Filteret her matcher discovery.py sin by_brand-gate — de to må holdes i
+sync manuelt siden URL-en (i motsetning til Foss/Torshov) ikke avslører
+merket, så gatingen ikke kan skje før parsing.
 """
 
 from __future__ import annotations
@@ -39,6 +52,11 @@ import json
 import re
 
 BLOB_MARK = "let b = "
+
+# Samme 10-merkeliste som run_pipeline.BRANDS / discovery.py sin by_brand-gate
+# for denne butikken — hold i sync manuelt hvis den listen endres.
+ALLOWED_BRANDS = {"asics", "adidas", "saucony", "nike", "hoka", "puma",
+                  "kiprun", "new balance", "brooks", "mizuno"}
 
 SHOE_RE = re.compile(r"(løpe|terreng|fjell|jogge|trail|konkurranse)sko", re.I)
 KIDS_RE = re.compile(r"\b(PS|GS|TS|TD)\b")
@@ -122,10 +140,17 @@ def parse(html: str, url: str) -> list[dict]:
         brand = _txt(product.get("BrandName"))
         if not brand:
             continue                      # uten merke kan vi ikke plassere produktet
+        if brand.lower() not in ALLOWED_BRANDS:
+            continue                      # ekte sko, men merket er ikke i scope ennå (se modul-docstring)
 
         product_id = product.get("ProductId")
         lp = product.get("LP")
-        price = round(lp / 100.0, 2) if isinstance(lp, (int, float)) else None
+        # Butikken prises reelt med øre (bekreftet: Wave Skyrise 4 dame er
+        # faktisk 999,50 kr), men resten av katalogen har alltid hele kroner
+        # — avrund bevisst til nærmeste krone her for konsistent visning
+        # på tvers av butikker (~50 øre presisjon er uvesentlig for laveste-
+        # pris-sammenligningen).
+        price = round(lp / 100.0) if isinstance(lp, (int, float)) else None
 
         product_line = re.sub(r"\s*\d+.*$", "", model).strip().lower().replace(" ", "-") or None
 

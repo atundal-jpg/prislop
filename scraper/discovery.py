@@ -409,18 +409,26 @@ STORES = {
     # verifisert i probe v3/v4), ~11 800 URL-er for HELE katalogen (ski,
     # klatreutstyr, sko …). Løpesko filtreres på "lopesko" i slug-en (742
     # treff 15. juli) — merket ligger så godt som ALDRI i URL-en (probe v4:
-    # 0/10 kjente merke-slugs traff, kun Salomon), så by_brand brukes ikke til
-    # å velge URL-delmengde her; parseren leser BrandName fra JSON-blob-en og
-    # slipper alt gjennom (som alle andre take-all-butikker: MODELS/BRANDS i
-    # run_pipeline er seed-dokumentasjon, ikke et faktisk kjøretids-filter).
+    # 0/10 kjente merke-slugs traff, kun Salomon), så by_brand kan IKKE velge
+    # URL-delmengde her (som Foss/Torshov gjør) — sitemap-URL-ene er identiske
+    # uansett hvilket merke som spør. by_brand-dicten under er derfor KUN en
+    # gate (samme 10-merkeliste som resten av katalogen; se BRANDS i
+    # run_pipeline.py), og selve merke-filtreringen skjer i
+    # oslosportslager_parser.ALLOWED_BRANDS — se den fila for begrunnelsen
+    # (16. juli: butikken bærer også Salomon/Craft/Dynafit/La Sportiva/Nnormal/
+    # Rossignol/Salming/Arc'Teryx/Columbia Montrail/Scarpa/Topo/Vj/Xtep, som
+    # bevisst holdes UTE inntil de ev. er probet inn hos de andre butikkene —
+    # ellers blir Oslo Sportslager eneste kilde for de merkene og "billigst
+    # pris" blir misvisende).
     "oslosportslager": {
         "name": "Oslo Sportslager",
         "base": "https://www.oslosportslager.no",
         "mode": "oslosportslager_sitemap",
         "sitemap": "https://oslosportslager.no/sitemap.xml",
-        # any_brand: discover() skal ikke portvokte på merke (jf. Bull sin
-        # asics-only-gate) — ETT sitemap-treff dekker alle merker butikken fører.
-        "any_brand": True,
+        "by_brand": {
+            "asics": {}, "adidas": {}, "saucony": {}, "nike": {}, "hoka": {},
+            "puma": {}, "kiprun": {}, "new balance": {}, "brooks": {}, "mizuno": {},
+        },
         "adapter": _oslosportslager,
     },
 }
@@ -852,18 +860,14 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
     # Flermerke: butikker med "by_brand" får merke-spesifikke felter lagt oppå
     # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter,
     # brand_re, prod_re…). Mangler merket i by_brand -> butikken fører/støtter
-    # det ikke -> []. Butikker UTEN by_brand ELLER any_brand er merke-bundne
-    # til Asics (Bull — trenger egen vendor-id-recon per merke). any_brand
-    # (Oslo Sportslager): URL-en avslører ikke merket, så ÉN sitemap-enumerering
-    # dekker alle merker — parseren filtrerer/leser merke fra sideinnholdet.
+    # det ikke -> []. Butikker UTEN by_brand er merke-bundne til Asics (Bull —
+    # trenger egen vendor-id-recon per merke).
     per = base_cfg.get("by_brand")
     if per is not None:
         if b not in per:
             return []
         cfg = dict(base_cfg)
         cfg.update(per[b])
-    elif base_cfg.get("any_brand"):
-        cfg = base_cfg
     else:
         if b != "asics":
             return []
@@ -871,9 +875,13 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
     cache_key = f"{store_slug}:{b}"
 
     # Oslo Sportslager: merke-agnostisk enumerering (samme URL-sett uansett
-    # hvilket merke som spør) — cache-nøkkelen ignorerer derfor merket, ellers
-    # ville sitemapen (1,9 MB, ~11 800 <loc>-er) hentes på nytt for hvert
-    # merke i BRANDS-loopen i run_pipeline i stedet for én gang per kjøring.
+    # hvilket av de 10 merkene som spør — sitemap-URL-en avslører ikke merket).
+    # Cache-nøkkelen ignorerer derfor merket, ellers ville sitemapen (1,9 MB,
+    # ~11 800 <loc>-er) hentes på nytt for hvert merke i BRANDS-loopen i
+    # run_pipeline i stedet for én gang per kjøring. Selve merke-filtreringen
+    # (10-liste vs. de ~13 ekstra trail-merkene butikken også fører) skjer i
+    # oslosportslager_parser.ALLOWED_BRANDS, siden merket bare er kjent ETTER
+    # at siden er hentet+parset, ikke fra URL-en.
     if cfg.get("mode") == "oslosportslager_sitemap":
         cache_key = store_slug
         if cache_key in _LIST_CACHE:
