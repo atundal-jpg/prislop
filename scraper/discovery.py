@@ -27,11 +27,11 @@ import json
 import re
 import time
 import urllib.request
-from urllib.parse import quote_plus, urlencode, urljoin
+from urllib.parse import quote_plus, urlencode, urljoin, urlparse
 import uuid
 
 import xxl_parser, torshov_parser, bull_parser, brukas_parser
-import sportholding_parser, foss_parser
+import sportholding_parser, foss_parser, oslosportslager_parser
 from loader import xxl_to_offers
 
 
@@ -85,6 +85,14 @@ def _foss(html, url):
     # Demonstrare: én PDP = én colorway m/ JSON-LD ProductGroup.hasVariant.
     # foss_parser.parse returnerer alt en liste ([] for ikke-sko/barn/ugyldig).
     return foss_parser.parse(html, url)
+
+
+def _oslosportslager(html, url):
+    # Intern .aspx-plattform: én PDP = ETT produkt, men ALLE fargevarianter
+    # (og alle størrelser per farge) ligger i ett JSON-blob på siden — parser
+    # returnerer derfor flere OfferRecords fra ÉTT fetch-kall (ingen ekstra
+    # HTTP-kall per farge, i motsetning til Brukås/Foss).
+    return oslosportslager_parser.parse(html, url)
 
 
 # --- Butikk-konfig ----------------------------------------------------------
@@ -395,6 +403,25 @@ STORES = {
             "new balance": {"prod_re": re.compile(r"/new-balance/\d+/", re.I)},
         },
         "adapter": _foss,
+    },
+    # Oslo Sportslager — intern .aspx-plattform (ikke gjenkjent hos noen av de
+    # andre butikkene). robots.txt -> sitemap.xml, FLAT (ingen indeks,
+    # verifisert i probe v3/v4), ~11 800 URL-er for HELE katalogen (ski,
+    # klatreutstyr, sko …). Løpesko filtreres på "lopesko" i slug-en (742
+    # treff 15. juli) — merket ligger så godt som ALDRI i URL-en (probe v4:
+    # 0/10 kjente merke-slugs traff, kun Salomon), så by_brand brukes ikke til
+    # å velge URL-delmengde her; parseren leser BrandName fra JSON-blob-en og
+    # slipper alt gjennom (som alle andre take-all-butikker: MODELS/BRANDS i
+    # run_pipeline er seed-dokumentasjon, ikke et faktisk kjøretids-filter).
+    "oslosportslager": {
+        "name": "Oslo Sportslager",
+        "base": "https://www.oslosportslager.no",
+        "mode": "oslosportslager_sitemap",
+        "sitemap": "https://oslosportslager.no/sitemap.xml",
+        # any_brand: discover() skal ikke portvokte på merke (jf. Bull sin
+        # asics-only-gate) — ETT sitemap-treff dekker alle merker butikken fører.
+        "any_brand": True,
+        "adapter": _oslosportslager,
     },
 }
 
@@ -784,6 +811,40 @@ def _foss_paths(cfg: dict) -> list[str]:
     return out
 
 
+# Oslo Sportslager: sitemap-<loc>-er som ser ut som løpesko-PDP-er. Merket
+# ligger sjelden i slug-en (probe v4), så filteret er bevisst bredt — brand
+# leses fra JSON-blob-en i parseren i stedet.
+_OSL_LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
+_OSL_PROD_LOPESKO_RE = re.compile(r"/produkt/[^\"'<>\s]*lopesko[^\"'<>\s]*\.aspx", re.I)
+
+
+def _oslosportslager_paths(cfg: dict) -> list[str]:
+    """Enumerer løpesko-produkt-URL-er fra Oslo Sportslagers sitemap. Flat
+    sitemap (ingen indeks, verifisert i probe v3/v4): ~11 800 <loc>-er for
+    HELE katalogen (ski, klatreutstyr, sko …), hvorav ~740 har "lopesko" i
+    slug-en. urljoin normaliserer host-mismatch (sitemap-loc-ene mangler
+    "www.", som base har — samme fiks som Foss-enumereringen trengte)."""
+    base = cfg["base"]
+    headers = {"User-Agent": "Mozilla/5.0 (prislop)", "Accept-Language": "nb-NO"}
+    try:
+        req = urllib.request.Request(cfg["sitemap"], headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            xml = r.read(10_000_000).decode("utf-8", "replace")
+    except Exception as e:
+        print(f"  [oslosportslager] sitemap-feil: {e}")
+        return []
+    out, seen = [], set()
+    for loc in _OSL_LOC_RE.findall(xml):
+        if not _OSL_PROD_LOPESKO_RE.search(loc):
+            continue
+        full = urljoin(base, urlparse(loc).path)
+        if full.startswith(base) and full not in seen:
+            seen.add(full)
+            out.append(full)
+    print(f"  [oslosportslager] sitemap -> {len(out)} løpesko-produkt-URL-er")
+    return out
+
+
 def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -> list[str]:
     base_cfg = STORES[store_slug]
     b = (brand or "").strip().lower()
@@ -791,19 +852,34 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
     # Flermerke: butikker med "by_brand" får merke-spesifikke felter lagt oppå
     # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter,
     # brand_re, prod_re…). Mangler merket i by_brand -> butikken fører/støtter
-    # det ikke -> []. Butikker UTEN by_brand er merke-bundne til Asics (nå kun
-    # Bull — trenger egen vendor-id-recon per merke).
+    # det ikke -> []. Butikker UTEN by_brand ELLER any_brand er merke-bundne
+    # til Asics (Bull — trenger egen vendor-id-recon per merke). any_brand
+    # (Oslo Sportslager): URL-en avslører ikke merket, så ÉN sitemap-enumerering
+    # dekker alle merker — parseren filtrerer/leser merke fra sideinnholdet.
     per = base_cfg.get("by_brand")
     if per is not None:
         if b not in per:
             return []
         cfg = dict(base_cfg)
         cfg.update(per[b])
+    elif base_cfg.get("any_brand"):
+        cfg = base_cfg
     else:
         if b != "asics":
             return []
         cfg = base_cfg
     cache_key = f"{store_slug}:{b}"
+
+    # Oslo Sportslager: merke-agnostisk enumerering (samme URL-sett uansett
+    # hvilket merke som spør) — cache-nøkkelen ignorerer derfor merket, ellers
+    # ville sitemapen (1,9 MB, ~11 800 <loc>-er) hentes på nytt for hvert
+    # merke i BRANDS-loopen i run_pipeline i stedet for én gang per kjøring.
+    if cfg.get("mode") == "oslosportslager_sitemap":
+        cache_key = store_slug
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
+        _LIST_CACHE[cache_key] = _oslosportslager_paths(cfg)[:2000]
+        return _LIST_CACHE[cache_key]
 
     # Jetshop GraphQL (Torshov): hent ALLE produkter direkte fra API-et, paginert.
     if cfg.get("mode") == "jetshop_api":
