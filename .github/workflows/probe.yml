@@ -14,6 +14,7 @@ on:
           - probe_sportholding_listing.py
           - probe_foss.py
           - probe_olympia.py
+          - probe_oslosportslager.py
           - probe_adidas.py
           - probe_brands.py
           - probe_bull_price.py
