@@ -30,6 +30,7 @@ import urllib.request
 from urllib.parse import quote_plus, urlencode, urljoin, urlparse
 import uuid
 
+import brands
 import xxl_parser, torshov_parser, bull_parser, brukas_parser
 import sportholding_parser, foss_parser, oslosportslager_parser
 from loader import xxl_to_offers
@@ -412,23 +413,19 @@ STORES = {
     # 0/10 kjente merke-slugs traff, kun Salomon), så by_brand kan IKKE velge
     # URL-delmengde her (som Foss/Torshov gjør) — sitemap-URL-ene er identiske
     # uansett hvilket merke som spør. by_brand-dicten under er derfor KUN en
-    # gate (samme 10-merkeliste som resten av katalogen; se BRANDS i
-    # run_pipeline.py), og selve merke-filtreringen skjer i
-    # oslosportslager_parser.ALLOWED_BRANDS — se den fila for begrunnelsen
-    # (16. juli: butikken bærer også Salomon/Craft/Dynafit/La Sportiva/Nnormal/
-    # Rossignol/Salming/Arc'Teryx/Columbia Montrail/Scarpa/Topo/Vj/Xtep, som
-    # bevisst holdes UTE inntil de ev. er probet inn hos de andre butikkene —
-    # ellers blir Oslo Sportslager eneste kilde for de merkene og "billigst
-    # pris" blir misvisende).
+    # gate, avledet fra brands.BRANDS (IKKE hardkodet — se brands.py) slik at
+    # den ikke kan drive fra oslosportslager_parser.ALLOWED_BRANDS, som gjør
+    # den faktiske merke-filtreringen (16. juli: butikken bærer også Salomon/
+    # Craft/Dynafit/La Sportiva/Nnormal/Rossignol/Salming/Arc'Teryx/Columbia
+    # Montrail/Scarpa/Topo/Vj/Xtep, som bevisst holdes UTE inntil de ev. er
+    # probet inn hos de andre butikkene — ellers blir Oslo Sportslager eneste
+    # kilde for de merkene og "billigst pris" blir misvisende).
     "oslosportslager": {
         "name": "Oslo Sportslager",
         "base": "https://www.oslosportslager.no",
         "mode": "oslosportslager_sitemap",
         "sitemap": "https://oslosportslager.no/sitemap.xml",
-        "by_brand": {
-            "asics": {}, "adidas": {}, "saucony": {}, "nike": {}, "hoka": {},
-            "puma": {}, "kiprun": {}, "new balance": {}, "brooks": {}, "mizuno": {},
-        },
+        "by_brand": {b.lower(): {} for b in brands.BRANDS},
         "adapter": _oslosportslager,
     },
 }

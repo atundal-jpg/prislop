@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import discovery
 import loader
+from brands import BRANDS
 from fetch import Fetcher
 
 # Merker × modeller vi jakter på. Butikker som ikke fører et merke gir [] fra
@@ -39,7 +40,8 @@ from fetch import Fetcher
 # NB: Alle 9 aktive butikker kjører take-all/cachede discovery-moduser, så
 # MODELS-listene er i praksis INERTE for discovery (hele merkekatalogen hentes
 # uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
-BRANDS = ["Asics", "Adidas", "Saucony", "Nike", "Hoka", "Puma", "Kiprun", "New Balance", "Brooks", "Mizuno"]
+# BRANDS er definert i brands.py (delt med discovery.py/oslosportslager_parser.py
+# sin merke-gate for Oslo Sportslager — se den fila for hvorfor).
 STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss",
           "oslosportslager"]   # de feed-løse butikkene
 

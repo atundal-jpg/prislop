@@ -10,6 +10,12 @@ at en parser har brutt sammen og returnerer samme (feil) pris for alt.
 Sjekker også om drop14 i v_prislop_products overstiger
 EXTREME_DROP14_THRESHOLD (standard 50%) — to av to tidligere fall i den
 størrelsen har vært parser-bugger, ikke ekte salg (se migrasjon 0019).
+Sjekker også om Oslo Sportslager har blitt ENESTE kilde for et merke
+(check_oslosportslager_brand_scope, 16. juli) — merke-gaten for den
+butikken (oslosportslager_parser.ALLOWED_BRANDS) kan ikke håndheves på
+URL-nivå, så en drift eller feilrettelse der ville ikke feile noe annet
+sted i harvesten, bare gjøre «billigst pris» stille misvisende for det
+merket.
 Feiler steget, stoppes også utsending av prisvarsler og dødmannspinget
 uteblir, slik at healthchecks.io varsler.
 """
@@ -106,6 +112,51 @@ def check_extreme_drop14(cur) -> bool:
     return False
 
 
+def check_oslosportslager_brand_scope(cur) -> bool:
+    """True hvis OK. Flagger merker der Oslo Sportslager er ENESTE butikk med
+    tilbud — signaturen på at ALLOWED_BRANDS i oslosportslager_parser.py har
+    driftet fra/blitt endret bort fra brands.BRANDS (de kan ikke lenger drive
+    fra HVERANDRE siden begge nå er avledet fra samme konstant, men noen kan
+    fortsatt redigere ALLOWED_BRANDS direkte). Sjekker bevisst KUN merker der
+    Oslo Sportslager selv har tilbud — ikke "alle merker med 1 butikk", som
+    er en helt normal og ufarlig tilstand for andre merker (f.eks. New
+    Balance er i skrivende stund kun hos Torshov)."""
+    cur.execute(
+        """
+        select p.brand, count(*) as n_offers
+        from prislop.products p
+        join prislop.variants v on v.product_id = p.id
+        join prislop.offers o on o.variant_id = v.id
+        join prislop.stores s on s.id = o.store_id
+        where p.brand in (
+            select distinct p2.brand
+            from prislop.products p2
+            join prislop.variants v2 on v2.product_id = p2.id
+            join prislop.offers o2 on o2.variant_id = v2.id
+            join prislop.stores s2 on s2.id = o2.store_id
+            where s2.slug = 'oslosportslager'
+        )
+        group by p.brand
+        having count(distinct s.slug) = 1
+        order by p.brand
+        """
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return True
+
+    for brand, n_offers in rows:
+        print(
+            f"FEIL: {brand}: Oslo Sportslager er eneste butikk med tilbud "
+            f"({n_offers} stk) — sjekk oslosportslager_parser.ALLOWED_BRANDS "
+            "mot brands.BRANDS. Uten flere butikker for dette merket blir "
+            "«billigst pris» misvisende (ser ut som en "
+            "tvers-butikk-sammenligning, er egentlig én butikk).",
+            file=sys.stderr,
+        )
+    return False
+
+
 def main() -> int:
     conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
     conn.autocommit = True
@@ -131,6 +182,7 @@ def main() -> int:
 
     ok = check_price_concentration(cur)
     ok = check_extreme_drop14(cur) and ok
+    ok = check_oslosportslager_brand_scope(cur) and ok
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")
