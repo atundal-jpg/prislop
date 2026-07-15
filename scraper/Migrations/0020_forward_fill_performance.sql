@@ -42,6 +42,23 @@
 --
 -- 0018 og 0019 er IKKE redigert (begge er anvendt mot databasen) — denne
 -- migrasjonen erstatter begge views på nytt med `create or replace view`.
+--
+-- DEDUPE-FIKS (samme dag, etter at 0020 først ble anvendt mot prod): 0020
+-- ga i sin opprinnelige form en DUBLETT i-dag-rad i v_prislop_price_series
+-- for 538 av 861 produkter. Årsak: intervals.end_day kan bli
+-- store_last_seen = max(last_seen_at)::date = I DAG når en butikk har vært
+-- sett nylig, så den historiske forward-fill-utvidelsen produserte en rad
+-- for dagens dato som kolliderte med today_row (union all, live fra
+-- offers). I 0018 skjedde ikke dette fordi generate_series der stoppet ved
+-- (today - 1). Fikset ved å klippe end_day til least(..., today - 1) i
+-- intervals-CTE-en, og ved å legge `and day < today` på den historiske
+-- delen av avslutnings-selecten — today_row eier dagens rad alene. Denne
+-- fiksen ble anvendt direkte mot prod som en midlertidig hotfix og er nå
+-- foldet inn her, slik at repoet har én korrekt migrasjon i stedet for en
+-- buggy migrasjon pluss en separat hotfix. Berører kun
+-- v_prislop_price_series — v_prislop_products/drop14 hadde ikke dubletten
+-- (drop14_daily brukes kun til basislinjevinduet [-21,-7], som aldri rører
+-- i dag).
 
 create or replace view public.v_prislop_price_series as
 with obs as (
@@ -74,14 +91,22 @@ intervals as (
   -- Hver observasjon er gyldig fra sin egen dag til dagen før NESTE
   -- observasjon for samme butikk-produkt-par — eller til butikkens siste
   -- bekreftede dag hvis dette er den siste kjente prisen (lead() er NULL).
+  -- least(..., today - 1): store_last_seen kan være I DAG (max(last_seen_at)
+  -- for en butikk sett nå nylig) — uten denne grensen produserer den
+  -- historiske utvidelsen en rad for dagens dato som kolliderer med
+  -- today_row (union all lenger ned), og gir en DUBLETT i-dag-rad per
+  -- produkt. today_row skal eie dagens rad alene.
   select
     o.product_id,
     o.store_id,
     o.price,
     o.day as start_day,
-    coalesce(
-      lead(o.day) over (partition by o.product_id, o.store_id order by o.day) - 1,
-      sls.last_seen_day
+    least(
+      coalesce(
+        lead(o.day) over (partition by o.product_id, o.store_id order by o.day) - 1,
+        sls.last_seen_day
+      ),
+      (now() at time zone 'Europe/Oslo')::date - 1
     ) as end_day
   from obs o
   join store_last_seen sls
@@ -120,12 +145,13 @@ today_row as (
 select product_id, day, min_price, n_stores
 from historical_days
 where day > (now() at time zone 'Europe/Oslo')::date - interval '90 days'
+  and day < (now() at time zone 'Europe/Oslo')::date
 union all
 select product_id, day, min_price, n_stores
 from today_row
 where min_price is not null;
 
-comment on view public.v_prislop_price_series is 'Per produkt, per dag: laveste pris på tvers av butikker (siste 90 dager, Europe/Oslo-døgn). Fremover-fylt til og med butikkens siste bekreftede dag (offers.last_seen_at, 0018 BUG 4), beregnet med LEAD()-vindusfunksjon i stedet for korrelert subquery per dag (0020 — 0018-versjonen tok 11.6s ufiltrert og felte hele nettsiden via PostgREST sin 3s/8s statement_timeout). MIN per butikk per dag (0018 BUG 1). Lagerfiltrert når kjent (price_history.in_stock, 0017). Dagens rad: live fra offers (0018 BUG 2). Brukes av prishistorikk-sparklinen og som fundament for drop14 (0019).';
+comment on view public.v_prislop_price_series is 'Per produkt, per dag: laveste pris på tvers av butikker (siste 90 dager, Europe/Oslo-døgn). Fremover-fylt til og med butikkens siste bekreftede dag (offers.last_seen_at, 0018 BUG 4), beregnet med LEAD()-vindusfunksjon i stedet for korrelert subquery per dag (0020 — 0018-versjonen tok 11.6s ufiltrert og felte hele nettsiden via PostgREST sin 3s/8s statement_timeout). Historisk del klippes ved (today - 1) slik at today_row alene eier dagens rad (0020 dedupe-fiks — uten dette ga forward-fillen en dublett i-dag-rad for 538/861 produkter). MIN per butikk per dag (0018 BUG 1). Lagerfiltrert når kjent (price_history.in_stock, 0017). Dagens rad: live fra offers (0018 BUG 2). Brukes av prishistorikk-sparklinen og som fundament for drop14 (0019).';
 
 grant select on public.v_prislop_price_series to anon, authenticated;
 
