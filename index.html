@@ -217,6 +217,12 @@
   .store .rank{font-family:var(--mono);font-size:13px;color:var(--muted)}
   .store .nm{font-weight:600;font-size:16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .store .nm .cw{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;letter-spacing:.04em}
+  /* størrelses-mikrolinje per butikkrad: passiv skanning (kun lager-str.,
+     ren tekst) — rutenettet under er fortsatt interaksjonspunktet.
+     flex-basis:100% tvinger egen linje i .nm-flexen. */
+  .store .nm .szline{flex-basis:100%;font-family:var(--mono);font-size:11px;line-height:1.7;
+    color:var(--muted);font-weight:400;letter-spacing:.03em}
+  .store .nm .szline b{color:var(--petrol);font-weight:700}
   .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
   .tag.best{background:var(--honey);color:#fff}
   .tag.oos{background:var(--line);color:var(--muted)}
@@ -1473,7 +1479,7 @@ const outUrl = o => o.offer_id ? UT_BASE + "?offer=" + encodeURIComponent(o.offe
 
 function storesHTML(offers, pid, selSize){
   if(!offers || !offers.length) return '';
-  const idx = selSize ? sizeIndexFor(pid) : null;
+  const idx = sizeIndexFor(pid);   // brukes nå alltid: både avail og mikrolinja
   const avail = o => !selSize ? (o.in_stock!==false)
     : !!(idx[String(o.offer_id)] && idx[String(o.offer_id)].has(selSize));
   const sorted = offers.slice().sort((a,b)=>(a.price||1e9)-(b.price||1e9));
@@ -1491,12 +1497,22 @@ function storesHTML(offers, pid, selSize){
     if(cw){
       cw = cw.replace(/^(womens?|mens?|wmns|w|m|u)\//i, "").replace(/\//g, " / ");
     }
+    // Mikrolinje: DENNE radens (farge × butikk) lager-størrelser, så man ser
+    // med ett blikk om f.eks. den billigste raden har ens størrelse. Valgt
+    // størrelse i rutenettet utheves i stedet for bare grå rad. Tilbud uten
+    // størrelsesdata viser ingenting (ikke «ingen data»).
+    const szs = idx[oid] ? [...idx[oid]].sort((a,b)=>sizeSort(a)-sizeSort(b)) : [];
+    const szline = szs.length
+      ? '<span class="szline">Str. ' + szs.map(s => s===selSize
+          ? '<b>'+esc(sizeDisp(s))+'</b>' : esc(sizeDisp(s))).join(' · ') + '</span>'
+      : '';
     return '<div class="store'+(ok?'':' size-out')+'" data-offer-id="'+esc(oid)+'">'
       + '<span class="rank">'+(i+1)+'</span>'
       + '<span class="nm">'+esc(storeName(o.store))
       +    (best ? ' <span class="tag best">Lavest</span>' : '')
       +    (!ok ? ' <span class="tag oos">Utsolgt</span>' : '')
       +    (cw ? ' <span class="cw">'+esc(cw)+'</span>' : '')
+      +    szline
       + '</span>'
       + '<span class="price">'+nok(o.price)+' kr</span>'
       + '<a class="go" href="'+esc(outUrl(o))+'" target="_blank" rel="sponsored nofollow noopener">Til '+esc(storeName(o.store))+' →</a>'
