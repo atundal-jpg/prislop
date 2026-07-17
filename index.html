@@ -106,7 +106,7 @@
   .bar{display:flex;align-items:center;justify-content:space-between;height:64px}
   .logo{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:-.03em;display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
   .logo svg{display:block;overflow:visible}
-  .bar nav a{font-size:14px;color:var(--muted);text-decoration:none;margin-left:22px}
+  .bar nav a{font-size:14px;color:var(--muted);text-decoration:none;margin-left:22px;white-space:nowrap}
   .bar nav a:hover{color:var(--petrol)}
 
   /* hero with price-line signature */
@@ -314,6 +314,11 @@
 
 
   @media (max-width:640px){
+    /* toppen skal holde seg på ÉN rad: «Slik funker det» er bare et anker
+       til seksjonen rett nedenfor og ofres på smale skjermer — de to
+       side-lenkene (Gode kjøp/Prisfall) er de som betyr noe i nav. */
+    .bar nav a{margin-left:14px}
+    .bar nav a[href="#slik"]{display:none}
     .store{grid-template-columns:20px minmax(0,1fr) auto;row-gap:8px}
     .store .go{grid-column:2 / -1;justify-self:start}
     .how{grid-template-columns:1fr}
