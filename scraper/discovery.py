@@ -32,7 +32,7 @@ import uuid
 
 import brands
 import xxl_parser, torshov_parser, bull_parser, brukas_parser
-import sportholding_parser, foss_parser, oslosportslager_parser
+import sportholding_parser, foss_parser, oslosportslager_parser, olympia_parser
 from loader import xxl_to_offers
 
 
@@ -86,6 +86,14 @@ def _foss(html, url):
     # Demonstrare: én PDP = én colorway m/ JSON-LD ProductGroup.hasVariant.
     # foss_parser.parse returnerer alt en liste ([] for ikke-sko/barn/ugyldig).
     return foss_parser.parse(html, url)
+
+
+def _olympia(html, url):
+    # Ett PDP-fetch = ÉN fargevei med ALLE størrelser allerede i den statiske
+    # HTML-en (verifisert i probe_olympia_sizeblocks) — ingen ekstra HTTP-kall
+    # per størrelse, i motsetning til Brukås.
+    rec = olympia_parser.parse(html, url)
+    return [rec] if rec else []
 
 
 def _oslosportslager(html, url):
@@ -420,6 +428,29 @@ STORES = {
     # Montrail/Scarpa/Topo/Vj/Xtep, som bevisst holdes UTE inntil de ev. er
     # probet inn hos de andre butikkene — ellers blir Oslo Sportslager eneste
     # kilde for de merkene og "billigst pris" blir misvisende).
+    # Olympia Sport — nopCommerce-aktig egen-plattform, server-rendret.
+    # probe_olympia (v6, 16. juli) sjekket alle ti katalogmerkene mot de fire
+    # løpekategoriene og fant treff KUN for Adidas (22) og Saucony (58) — de
+    # åtte andre (Asics, Nike, Hoka, Puma, Kiprun, New Balance, Brooks,
+    # Mizuno) ga 0 produkter. by_brand er derfor bevisst begrenset til disse
+    # to, ikke hele brands.BRANDS (samme begrunnelse som Oslo Sportslager sin
+    # ALLOWED_BRANDS-gate — se den for hvorfor). EAN finnes aldri (probe_
+    # olympia_ajax: itemprop="gtin" er tomt på hver sjekket PDP); bro skjer
+    # via manufacturer_code (Adidas/Saucony sin egen artikkelkode, samme
+    # FORMAT som Intersport/Sport1 bruker — se probe_olympia_bridge for
+    # forbeholdet: formatet stemmer, men 0/8 direkte kode-treff i den proben)
+    # eller navnematching, akkurat som XXL/Oslo Sportslager.
+    "olympia": {
+        "name": "Olympia Sport",
+        "base": "https://www.olympiasport.no",
+        "mode": "olympia_categories",
+        "categories": ["/asfaltsko", "/terrengsko", "/joggesko-herre", "/joggesko-dame"],
+        "by_brand": {
+            "adidas": {},
+            "saucony": {},
+        },
+        "adapter": _olympia,
+    },
     "oslosportslager": {
         "name": "Oslo Sportslager",
         "base": "https://www.oslosportslager.no",
@@ -816,6 +847,44 @@ def _foss_paths(cfg: dict) -> list[str]:
     return out
 
 
+# Olympia Sport: paginer de fire løpekategoriene, behold lenker som starter
+# med "/<brand>-" (samme tile-uttrekk som probe_olympia v6, verifisert mot
+# ekte markup). Ett PDP inneholder alle størrelser -> ingen andre-trinns
+# utvidelse (til forskjell fra Brukås).
+_OLYMPIA_PAGER_RE = re.compile(r'[?&]pagenumber=(\d+)', re.I)
+_OLYMPIA_TILE_RE = re.compile(
+    r'class="product-item"[^>]*data-productid="\d+">\s*'
+    r'<div class="picture">\s*<a\s+href="([^"#?]+)"', re.I)
+_OLYMPIA_TILE_LOOSE_RE = re.compile(
+    r'data-productid="\d+">(?:(?!</a>).)*?<a\s+href="(/[^"#?]+)"', re.I | re.S)
+
+
+def _olympia_tiles(html: str) -> list[str]:
+    return _OLYMPIA_TILE_RE.findall(html) or _OLYMPIA_TILE_LOOSE_RE.findall(html)
+
+
+def _olympia_paths(fetcher, cfg: dict, brand: str) -> list[str]:
+    base = cfg["base"]
+    out, seen = [], set()
+    for cat in cfg["categories"]:
+        first = fetcher.get(f"{base}{cat}")
+        if not first:
+            continue
+        pages = [first]
+        last = min(max([int(x) for x in _OLYMPIA_PAGER_RE.findall(first)] or [1]),
+                   cfg.get("max_pages", 4))
+        pages += [fetcher.get(f"{base}{cat}?pagenumber={p}") for p in range(2, last + 1)]
+        for html in pages:
+            for href in _olympia_tiles(html or ""):
+                if not href.lower().startswith(f"/{brand}-"):
+                    continue
+                url = urljoin(base, href)
+                if url.startswith(base) and url not in seen:
+                    seen.add(url)
+                    out.append(url)
+    return out
+
+
 # Oslo Sportslager: sitemap-<loc>-er som ser ut som løpesko-PDP-er. Merket
 # ligger sjelden i slug-en (probe v4), så filteret er bevisst bredt — brand
 # leses fra JSON-blob-en i parseren i stedet.
@@ -933,6 +1002,13 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
                         seen.add(url)
                         out.append(url)
         _LIST_CACHE[cache_key] = out[:500]
+        return _LIST_CACHE[cache_key]
+
+    # Olympia Sport: paginer kategoriene, filtrer på merke-slug-prefiks.
+    if cfg.get("mode") == "olympia_categories":
+        if cache_key in _LIST_CACHE:
+            return _LIST_CACHE[cache_key]
+        _LIST_CACHE[cache_key] = _olympia_paths(fetcher, cfg, b)[:1000]
         return _LIST_CACHE[cache_key]
 
     # SportHolding (Intersport / Sport 1 / Löplabbet): gå side for side over

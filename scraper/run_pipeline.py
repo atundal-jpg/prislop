@@ -42,8 +42,16 @@ from fetch import Fetcher
 # uansett). De er seed-lister for ev. fremtidige søkebaserte butikker + dok.
 # BRANDS er definert i brands.py (delt med discovery.py/oslosportslager_parser.py
 # sin merke-gate for Oslo Sportslager — se den fila for hvorfor).
-STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "bull", "brukas", "foss",
-          "oslosportslager"]   # de feed-løse butikkene
+STORES = ["xxl", "torshov", "intersport", "sport1", "loplabbet", "olympia", "bull", "brukas",
+          "foss", "oslosportslager"]   # de feed-løse butikkene
+# Olympia lastes rett etter SportHolding-trioen (Intersport/Sport1/Löplabbet):
+# Adidas/Saucony sin manufacturer_code hos Olympia har samme FORMAT som den
+# de tre allerede bruker (probe_olympia_bridge), så et evt. reelt kode-
+# overlapp fanges av loaderens selvhelbredende kode-arv når SportHolding-
+# variantene alt er i cachen. by_brand={"adidas","saucony"} (kun de to
+# katalogmerkene Olympia faktisk fører, jf. probe_olympia v6) gjør resten av
+# BRANDS-loopen under til stille no-op-er for denne butikken, som for Oslo
+# Sportslager sin egen begrensede merkeliste.
 
 MODELS = {
     "Asics": [
