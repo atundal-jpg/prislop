@@ -46,8 +46,8 @@ def main():
         urls = discovery.discover(fetcher, "olympia", brand, "", limit=1000)
         print(f"  discovery: {len(urls)} produkt-URL-er")
 
-        ok, bad, no_stock = 0, 0, 0
-        for url in urls[:6]:
+        ok, bad, no_stock, no_price = 0, 0, 0, 0
+        for i, url in enumerate(urls):
             html = fetcher.get(url)
             if not html:
                 print(f"    FETCH-FEIL {url}")
@@ -68,12 +68,16 @@ def main():
             n_in_stock = sum(1 for s in rec["sizes"] if s["in_stock"])
             if n_in_stock == 0:
                 no_stock += 1
+            if rec["price"] is None:
+                no_price += 1
             ok += 1
-            print(f"    OK  {rec['brand']} | {rec['model']} | {rec['gender']} | {rec['color']!r}")
-            print(f"        kode={rec['manufacturer_code']} sku={rec['store_sku']} "
-                  f"pris={rec['price']} {rec['currency']} str={n_sizes} (på lager={n_in_stock})")
-            print(f"        {[s['size_label'] for s in rec['sizes']]}")
-        print(f"  -> {ok} OK, {bad} feil/tomme, {no_stock} med 0 størrelser på lager (av {min(6, len(urls))} sjekket)")
+            if i < 6 or rec["price"] is None or n_in_stock == 0:
+                print(f"    OK  {rec['brand']} | {rec['model']} | {rec['gender']} | {rec['color']!r}")
+                print(f"        kode={rec['manufacturer_code']} sku={rec['store_sku']} "
+                      f"pris={rec['price']} {rec['currency']} str={n_sizes} (på lager={n_in_stock})")
+                print(f"        {[s['size_label'] for s in rec['sizes']]}")
+        print(f"  -> {ok} OK, {bad} feil/tomme, {no_stock} med 0 på lager, "
+              f"{no_price} med pris=None (av {len(urls)} totalt)")
 
     print("\n" + "=" * 74)
     print("Ingenting skrevet til databasen — kun parse-verifisering.")
