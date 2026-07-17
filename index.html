@@ -650,6 +650,14 @@ const DEAL_CONTENT = {
 };
 const dealPct = p => Math.round(Number(p.deal_gap || 0) * 100);
 
+/* Prisjakt-modellen (migrasjon 0022): lowest_in_days = hvor mange dager
+   dagens pris har vært den laveste vi har observert. Vises i sparkline-
+   foten først ved >= LOWEST_MIN_DAYS — og kun sammen med «på laveste nå»,
+   så teksten aldri sier mer enn kurven rett over den viser. Tallet kan per
+   design (0022) aldri overstige faktisk sporet historikk, så påstanden
+   vokser av seg selv utover august/september etter re-splitten 5./9. juli. */
+const LOWEST_MIN_DAYS = 30;
+
 /* ---- paginering: kort forsideliste (topp N etter rank_score), «Vis flere» for resten ---- */
 const PAGE_SIZE = 18;
 let visibleCount = PAGE_SIZE;
@@ -1451,6 +1459,13 @@ function sparkHTML(series, product){
     deltaTxt = pct=== 0 ? "uendret" : (pct>0?"+":"")+pct+" %";
   }
   var isLowNow = last.p <= lo + 0.5;
+  // «Laveste pris på N dager» (lowest_in_days, 0022) kan dekke lengre enn
+  // sparklinens 90-dagersvindu, men gates på isLowNow så fot-teksten aldri
+  // motsier kurven over.
+  var lowDays = Number(product && product.lowest_in_days) || 0;
+  var lowTxt = lowDays >= LOWEST_MIN_DAYS
+    ? 'laveste pris på ' + lowDays + ' dager'
+    : 'på laveste nå';
   return ''
     + '<div class="spark">'
     +   '<div class="spark-head">'
@@ -1465,7 +1480,7 @@ function sparkHTML(series, product){
     +   '</svg>'
     +   '<p class="spark-foot">'
     +     'Lavest i perioden: '+nok(lo)+' kr'
-    +     (isLowNow ? ' · <strong>på laveste nå</strong>' : '')
+    +     (isLowNow ? ' · <strong>'+lowTxt+'</strong>' : '')
     +     '<br><span style="opacity:.75">Laveste pris på tvers av farger og størrelser'
     +     ' — velg størrelse under for å se hva som faktisk er på lager.</span>'
     +   '</p>'
