@@ -18,6 +18,7 @@ on:
           - probe_olympia_bridge.py
           - probe_olympia_titles.py
           - probe_olympia_count.py
+          - probe_olympia_sizeblocks.py
           - probe_oslosportslager.py
           - probe_oslosportslager_verify.py
           - probe_adidas.py
