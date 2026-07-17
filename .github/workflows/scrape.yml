@@ -9,6 +9,10 @@ on:
         description: "Re-split-vaktens toleranse for |Δproducts| (default 10). Hev midlertidig ved planlagt merkebølge/merge — f.eks. 200."
         required: false
         default: "10"
+      extreme_drop14_threshold:
+        description: "check_extreme_drop14 sin terskel (default 0.5 = 50%). Hev midlertidig når et fall er MENNESKE-VERIFISERT ekte (sjekket rå butikkpris) — ikke bare for å slippe unna varselet."
+        required: false
+        default: "0.5"
 
 concurrency:
   group: scrape-prislop
@@ -53,6 +57,7 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           RESPLIT_TOLERANCE: ${{ inputs.resplit_tolerance }}
+          EXTREME_DROP14_THRESHOLD: ${{ inputs.extreme_drop14_threshold }}
         run: python post_harvest_check.py
 
       - name: Send prisvarsler
