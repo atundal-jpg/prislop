@@ -104,7 +104,7 @@
   /* top bar */
   header{border-bottom:1px solid var(--line)}
   .bar{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .logo{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:-.03em;display:flex;align-items:center;gap:10px;color:var(--ink)}
+  .logo{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:-.03em;display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
   .logo svg{display:block;overflow:visible}
   .bar nav a{font-size:14px;color:var(--muted);text-decoration:none;margin-left:22px}
   .bar nav a:hover{color:var(--petrol)}
@@ -317,13 +317,13 @@
 <body>
 <header>
   <div class="wrap bar">
-    <div class="logo">
+    <a class="logo" href="./" aria-label="Prisløp — til forsiden">
       <svg width="28" height="20" viewBox="0 0 28 20" fill="none" aria-hidden="true">
         <polyline points="1,4 7,9 13,5.5 19,12.5 24.5,17" stroke="#136E68" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
         <circle cx="24.5" cy="17" r="3" fill="#BC7A1E"/>
       </svg>
       Prisløp
-    </div>
+    </a>
     <nav>
       <a href="./?prisfall">Prisfall</a>
       <a href="#slik">Slik funker det</a>
