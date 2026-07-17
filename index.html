@@ -157,6 +157,9 @@
 
   /* prisfall-badge i kort-sublinja — honey er allerede sidens prisdipp-farge */
   .sub .dropbadge{font-family:var(--mono);font-size:12px;color:var(--honey);font-weight:700;white-space:nowrap}
+  /* godt kjøp-badge i kort-sublinja — grønn (--ok) er sidens «kjøpbart nå»-
+     farge. Ingen nowrap: teksten inkluderer butikknavn og skal kunne brytes. */
+  .sub .dealbadge{font-family:var(--mono);font-size:12px;color:var(--ok);font-weight:700}
 
   /* attributt-filtre (karbonplate/vanntett/wide) — egen filterdimensjon,
      visuelt skilt fra kategori/merke-dropdownene med en liten etikett */
@@ -325,6 +328,7 @@
       Prisløp
     </a>
     <nav>
+      <a href="./?gode-kjop">Gode kjøp</a>
       <a href="./?prisfall">Prisfall</a>
       <a href="#slik">Slik funker det</a>
     </nav>
@@ -462,6 +466,10 @@
       <span class="fcats-h">Prisfall</span>
       <a href="./?prisfall">Løpesko som har falt i pris siste 14 dager</a>
     </nav>
+    <nav class="fcats" aria-label="Gode kjøp">
+      <span class="fcats-h">Gode kjøp</span>
+      <a href="./?gode-kjop">Løpesko der én butikk ligger langt under de andre</a>
+    </nav>
     <div class="frow">
       <span><a href="om.html" style="color:var(--ink)">Om Prisløp</a> · <a href="personvern.html" style="color:var(--ink)">Personvern</a></span>
       <span class="mono">prisløp.no</span>
@@ -531,7 +539,7 @@ async function productIdsWithSize(size){
 /* ---- state ---- */
 let PRODUCTS = [];
 const offerCache = {}, sizeCache = {}, sizeFilterCache = {}, seriesCache = {};
-const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false, prisfall:false };
+const filters = { q:"", brand:"", gender:"", size:"", kat:"", sort:"rank", carbon:false, waterproof:false, wide:false, prisfall:false, deal:false };
 
 // Spor 4: brukskategorier (subcategory i v_prislop_products). Etikettene
 // gjenbrukes i kort-badgen og som JSON-LD-category.
@@ -619,6 +627,22 @@ const PRISFALL_CONTENT = {
   intro: "Her samler vi løpeskoene som faktisk har falt i pris de siste 14 dagene, sortert etter størst nedgang. Prisene hentes fra norske nettbutikker hver 6. time, så lista endrer seg fra dag til dag — og hvert kort viser som vanlig lagerstatus per størrelse, så du ser om prisfallet gjelder <em>din</em> størrelse."
 };
 const dropPct = p => Math.round(Number(p.drop14 || 0) * 100);
+
+/* ---- Gode kjøp-landingsside: ?gode-kjop ----
+   Ingen egen datahenting: deal_gap/deal_store ligger allerede per produkt i
+   v_prislop_products (migrasjon 0021 — flagg når billigste butikk ligger
+   minst 25 % under medianen av de andre butikkenes laveste pris, minst 3
+   butikker og minst 3 størrelser på lager i det billigste tilbudet).
+   Terskelen bor i DB-viewet; her er deal_gap != null hele sannheten.
+   Ortogonalt til prisfall: dette er tverrsnittet (billigere enn de andre NÅ),
+   prisfall er tidsdimensjonen (falt mot egen historikk). */
+const DEAL_URL = CANON_BASE + "?gode-kjop";
+const DEAL_CONTENT = {
+  title: "Gode kjøp på løpesko — størst prisgap nå | Prisløp",
+  desc:  "Løpesko der én butikk ligger minst 25 % under prisnivået hos de andre norske nettbutikkene — med størrelser på lager. Oppdateres hver 6. time.",
+  intro: "Her samler vi løpeskoene som fremstår som et spesielt godt kjøp akkurat nå: minst tre butikker fører modellen, og den billigste ligger minst 25 prosent under prisnivået (medianen) hos de andre — med minst tre størrelser på lager. Prisen gjelder ofte én bestemt farge, så åpne kortet og sjekk at <em>din</em> størrelse er inne. Prisene hentes hver 6. time."
+};
+const dealPct = p => Math.round(Number(p.deal_gap || 0) * 100);
 
 /* ---- paginering: kort forsideliste (topp N etter rank_score), «Vis flere» for resten ---- */
 const PAGE_SIZE = 18;
@@ -825,6 +849,65 @@ function removePrisfallJsonLd(){
   if(s) s.remove();
 }
 
+/* ---- Gode kjøp-siden: AEO-svar + CollectionPage/ItemList/FAQPage-JSON-LD.
+   Samme mønster som prisfall — AEO-teksten i JSON-LD er identisk med den
+   som vises synlig i intro-boksen. Svaret peker på det KONKRETE funnet
+   (pris + butikk), aldri «butikk X er billigst» generelt: flagget utløses
+   av ett tilbud (én farge), ikke av butikken som helhet. ---- */
+function dealAeoAnswer(){
+  const list = PRODUCTS.filter(p => p.deal_gap != null)
+                       .sort((a,b) => Number(b.deal_gap||0) - Number(a.deal_gap||0));
+  if(!list.length) return "Ingen løpesko skiller seg ut som et spesielt godt kjøp akkurat nå. Lista oppdateres hver 6. time — sjekk igjen senere.";
+  const b = list[0];
+  return "Akkurat nå er " + list.length + " modeller flagget som gode kjøp hos Prisløp — billigste butikk ligger minst 25 % under prisnivået hos de andre butikkene. Størst avstand: "
+    + b.brand + " " + b.model + " til " + nok(b.from_price) + " kr"
+    + (b.deal_store ? " hos " + b.deal_store : "")
+    + ", " + dealPct(b) + " % under de andre. Prisene oppdateres hver 6. time.";
+}
+function dealJsonLd(){
+  const url = DEAL_URL;
+  const items = currentList().slice(0, 18);
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        "@id": url + "#page",
+        "url": url,
+        "name": DEAL_CONTENT.title,
+        "isPartOf": { "@id": CANON_BASE + "#website" },
+        "mainEntity": {
+          "@type": "ItemList",
+          "itemListElement": items.map((p,i) => ({
+            "@type": "ListItem", "position": i+1,
+            "url": productUrl(p.product_id), "name": p.brand + " " + p.model
+          }))
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": url + "#faq",
+        "mainEntity": [{
+          "@type": "Question", "name": "Hvilke løpesko er et spesielt godt kjøp akkurat nå?",
+          "acceptedAnswer": { "@type": "Answer", "text": dealAeoAnswer() }
+        }]
+      }
+    ]
+  };
+}
+function injectDealJsonLd(){
+  removeDealJsonLd();
+  const s = document.createElement("script");
+  s.type = "application/ld+json";
+  s.id = "deal-jsonld";
+  s.textContent = JSON.stringify(dealJsonLd());
+  document.head.appendChild(s);
+}
+function removeDealJsonLd(){
+  const s = el("deal-jsonld");
+  if(s) s.remove();
+}
+
 const metaC   = sel => { const n = document.querySelector(sel); return n ? (n.getAttribute("content") || n.getAttribute("href") || "") : ""; };
 const setAttr = (sel, attr, val) => { const n = document.querySelector(sel); if(n) n.setAttribute(attr, val); };
 
@@ -870,6 +953,7 @@ function applyHomeMeta(){
   removeProductJsonLd();
   removeKategoriJsonLd();
   removePrisfallJsonLd();
+  removeDealJsonLd();
   renderKatIntro(null);
 }
 function applyKategoriMeta(slug){
@@ -885,6 +969,7 @@ function applyKategoriMeta(slug){
   setAttr('meta[name="twitter:description"]', "content", c.desc);
   removeProductJsonLd();
   removePrisfallJsonLd();
+  removeDealJsonLd();
   injectKategoriJsonLd(slug);
   renderKatIntro(slug);
 }
@@ -900,8 +985,25 @@ function applyPrisfallMeta(){
   setAttr('meta[name="twitter:description"]', "content", PRISFALL_CONTENT.desc);
   removeProductJsonLd();
   removeKategoriJsonLd();
+  removeDealJsonLd();
   injectPrisfallJsonLd();
   renderPrisfallIntro();
+}
+function applyDealMeta(){
+  const url = DEAL_URL;
+  setAttr('link[rel="canonical"]', "href", url);
+  setAttr('meta[property="og:url"]', "content", url);
+  document.title = DEAL_CONTENT.title;
+  setAttr('meta[name="description"]',        "content", DEAL_CONTENT.desc);
+  setAttr('meta[property="og:title"]',       "content", DEAL_CONTENT.title);
+  setAttr('meta[property="og:description"]', "content", DEAL_CONTENT.desc);
+  setAttr('meta[name="twitter:title"]',      "content", DEAL_CONTENT.title);
+  setAttr('meta[name="twitter:description"]', "content", DEAL_CONTENT.desc);
+  removeProductJsonLd();
+  removeKategoriJsonLd();
+  removePrisfallJsonLd();
+  injectDealJsonLd();
+  renderDealIntro();
 }
 /* Synlig intro + AEO-svar over kortlista — må matche det som ligger i JSON-LD,
    siden Google/AI-søk forventer at FAQ-innhold faktisk vises på siden. */
@@ -927,6 +1029,16 @@ function renderPrisfallIntro(){
     + '<p class="kat-aeo"><strong>Hvilke løpesko har falt mest i pris nå?</strong><br>'
     + esc(prisfallAeoAnswer()) + '</p>';
 }
+function renderDealIntro(){
+  const box = el("kat-intro");
+  if(!box) return;
+  box.hidden = false;
+  box.innerHTML =
+      '<p class="eyebrow">Gode kjøp akkurat nå</p>'
+    + '<p class="kat-lede">' + DEAL_CONTENT.intro + '</p>'
+    + '<p class="kat-aeo"><strong>Hvilke løpesko er et spesielt godt kjøp akkurat nå?</strong><br>'
+    + esc(dealAeoAnswer()) + '</p>';
+}
 /* Holder URL-en synkronisert med rutetilstanden når brukeren filtrerer/søker
    (render() river uansett åpne kort). Prisfall og kategori er de eneste
    filtrene som får egen URL/landingsside — resten (merke/størrelse/søk/
@@ -938,11 +1050,14 @@ function syncListUrl(){
   if(filters.prisfall){
     if(location.href !== PRISFALL_URL) history.replaceState({}, "", PRISFALL_URL);
     applyPrisfallMeta();
+  }else if(filters.deal){
+    if(location.href !== DEAL_URL) history.replaceState({}, "", DEAL_URL);
+    applyDealMeta();
   }else if(filters.kat && KAT_LABELS[filters.kat]){
     const url = kategoriUrl(filters.kat);
     if(location.href !== url) history.replaceState({}, "", url);
     applyKategoriMeta(filters.kat);
-  }else if(params.get("product") || params.get("kategori") || params.has("prisfall")){
+  }else if(params.get("product") || params.get("kategori") || params.has("prisfall") || params.has("gode-kjop")){
     history.replaceState({}, "", HOME_URL);
     applyHomeMeta();
   }
@@ -981,6 +1096,12 @@ function syncFromLocation(){
     return;
   }
   if(filters.prisfall){ filters.prisfall = false; resetPaging(); render(); }
+  if(params.has("gode-kjop")){
+    filters.deal = true;
+    resetPaging(); render(); applyDealMeta();
+    return;
+  }
+  if(filters.deal){ filters.deal = false; resetPaging(); render(); }
   const slug = params.get("kategori");
   if(slug && KAT_LABELS[slug]){
     filters.kat = slug; const sel = el("f-kat"); if(sel) sel.value = slug;
@@ -1009,11 +1130,14 @@ async function init(){
   bindControls();
   applyKategoriFromUrl();
   applyPrisfallFromUrl();
+  applyDealFromUrl();
   render();
   if(new URLSearchParams(location.search).get("product")){
     openFromUrl();
   }else if(filters.prisfall){
     applyPrisfallMeta();
+  }else if(filters.deal){
+    applyDealMeta();
   }else if(filters.kat){
     applyKategoriMeta(filters.kat);
   }
@@ -1029,6 +1153,10 @@ function applyKategoriFromUrl(){
 // ved sidelast: aktiver prisfall-modus hvis ?prisfall er i URL-en
 function applyPrisfallFromUrl(){
   if(new URLSearchParams(location.search).has("prisfall")) filters.prisfall = true;
+}
+// ved sidelast: aktiver gode kjøp-modus hvis ?gode-kjop er i URL-en
+function applyDealFromUrl(){
+  if(new URLSearchParams(location.search).has("gode-kjop")) filters.deal = true;
 }
 
 async function buildHeroStats(){
@@ -1093,6 +1221,7 @@ function bindAttrPill(id, apply){
 function currentList(){
   let list = PRODUCTS.slice();
   if(filters.prisfall) list = list.filter(p => Number(p.drop14) >= PRISFALL_MIN);
+  if(filters.deal)     list = list.filter(p => p.deal_gap != null);
   if(filters.brand)  list = list.filter(p => p.brand === filters.brand);
   if(filters.gender) list = list.filter(p => p.gender === filters.gender);
   if(filters.kat)    list = list.filter(p => p.subcategory === filters.kat);
@@ -1111,9 +1240,11 @@ function currentList(){
   // slike modeller sist i stedet for at null||0 gjør dem til "billigst".
   const fp = p => p.from_price==null ? Infinity : p.from_price;
   // I prisfall-modus betyr «Anbefalt» størst prisfall først — det ER sidens
-  // premiss. Velger brukeren en annen sortering, respekteres den.
+  // premiss. Samme for gode kjøp-modus: størst gap først. Velger brukeren
+  // en annen sortering, respekteres den.
   list.sort((a,b) =>
     (filters.prisfall && s==="rank") ? Number(b.drop14||0)-Number(a.drop14||0) || fp(a)-fp(b)
+    : (filters.deal && s==="rank") ? Number(b.deal_gap||0)-Number(a.deal_gap||0) || fp(a)-fp(b)
     : s==="rank" ? (b.rank_score||0)-(a.rank_score||0) || fp(a)-fp(b)
     : s==="stores" ? (b.n_stores||0)-(a.n_stores||0) || fp(a)-fp(b)
     : s==="name" ? String(a.model).localeCompare(String(b.model),"nb")
@@ -1123,7 +1254,7 @@ function currentList(){
 
 function render(){
   const list = currentList();
-  const anyFilter = filters.q||filters.brand||filters.gender||filters.size||filters.carbon||filters.waterproof||filters.wide||filters.prisfall;
+  const anyFilter = filters.q||filters.brand||filters.gender||filters.size||filters.carbon||filters.waterproof||filters.wide||filters.prisfall||filters.deal;
 
   let shown = list.slice(0, visibleCount);
   // dyplenket produkt utenfor synlig side: fest øverst så URL-en alltid rendrer kortet
@@ -1137,12 +1268,19 @@ function render(){
       ? "Viser " + shown.length + " av " + list.length + " modeller"
       : list.length + (list.length===1?" modell":" modeller"))
     + (filters.prisfall && list.length ? " med prisfall siste 14 dager" : "")
+    + (filters.deal && list.length ? " flagget som godt kjøp" : "")
     + (anyFilter ? ' <button class="reset" onclick="resetFilters()">nullstill filtre</button>' : "");
 
   if(!list.length){
     el("products").innerHTML = filters.prisfall
       ? '<div class="state"><h3>Ingen prisfall akkurat nå</h3>'
         + '<p>Ingen modeller har falt merkbart i pris siste 14 dager'
+        + (filters.brand||filters.kat||filters.q||filters.size ? ' innenfor filtrene dine' : '')
+        + '. Lista oppdateres hver 6. time — kom gjerne tilbake.</p>'
+        + '<button class="btn" onclick="resetFilters()">Til hele katalogen</button></div>'
+      : filters.deal
+      ? '<div class="state"><h3>Ingen gode kjøp akkurat nå</h3>'
+        + '<p>Ingen butikk ligger for øyeblikket langt nok under de andre'
         + (filters.brand||filters.kat||filters.q||filters.size ? ' innenfor filtrene dine' : '')
         + '. Lista oppdateres hver 6. time — kom gjerne tilbake.</p>'
         + '<button class="btn" onclick="resetFilters()">Til hele katalogen</button></div>'
@@ -1161,7 +1299,14 @@ function render(){
 function cardHTML(p){
   const drop = (filters.prisfall && Number(p.drop14) >= PRISFALL_MIN)
     ? '<span class="dropbadge">▼ ' + dropPct(p) + ' % siste 14 d</span>' : null;
-  const sub = [drop,
+  // Godt kjøp-badgen vises i ALLE lister (forside/kategori/gode kjøp) — det
+  // er selve poenget med signalet. Teksten peker på det konkrete funnet
+  // (butikk + gap), aldri «butikken er billigst» generelt: flagget utløses
+  // av ett tilbud (én farge), og prisen står i «Lavest nå» rett ved siden.
+  const deal = p.deal_gap != null
+    ? '<span class="dealbadge">Godt kjøp' + (p.deal_store ? ' hos ' + esc(p.deal_store) : '')
+      + ' · ' + dealPct(p) + ' % under de andre</span>' : null;
+  const sub = [drop, deal,
                esc(KAT_LABELS[p.subcategory] || "") || null,
                esc(cap(p.gender)), esc(plur(p.n_colorways,"farge","farger")),
                esc(p.sizes_in_stock>0 ? p.sizes_in_stock+" størrelser på lager" : "ingen størrelser inne nå")]
@@ -1187,10 +1332,13 @@ async function toggle(btn){
   const card = btn.closest(".product");
   if(card.classList.contains("open")){
     closeCard(card);
-    // lukk → tilbake til lista vi kom fra (prisfall/kategori/forside)
+    // lukk → tilbake til lista vi kom fra (prisfall/gode kjøp/kategori/forside)
     if(filters.prisfall){
       history.pushState({}, "", PRISFALL_URL);
       applyPrisfallMeta();
+    }else if(filters.deal){
+      history.pushState({}, "", DEAL_URL);
+      applyDealMeta();
     }else if(filters.kat && KAT_LABELS[filters.kat]){
       history.pushState({}, "", kategoriUrl(filters.kat));
       applyKategoriMeta(filters.kat);
@@ -1515,6 +1663,7 @@ function resetFilters(){
   el("q").value=""; el("f-brand").value=""; el("f-gender").value=""; el("f-size").value="";
   el("f-kat").value=""; filters.kat="";
   filters.prisfall=false;
+  filters.deal=false;
   filters.carbon=false; filters.waterproof=false; filters.wide=false;
   ["f-carbon","f-waterproof","f-wide"].forEach(id => el(id).setAttribute("aria-pressed","false"));
   resetPaging();

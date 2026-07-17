@@ -16,6 +16,9 @@ butikken (oslosportslager_parser.ALLOWED_BRANDS) kan ikke håndheves på
 URL-nivå, så en drift eller feilrettelse der ville ikke feile noe annet
 sted i harvesten, bare gjøre «billigst pris» stille misvisende for det
 merket.
+Logger også en oppsummering av «godt kjøp»-flaggene (deal_gap, migrasjon
+0021) og ADVARER — uten å feile — hvis én butikk dominerer flaggene
+(warn_deal_concentration).
 Feiler steget, stoppes også utsending av prisvarsler og dødmannspinget
 uteblir, slik at healthchecks.io varsler.
 """
@@ -36,6 +39,17 @@ PRICE_SHARE_MIN_OFFERS = int(os.environ.get("PRICE_SHARE_MIN_OFFERS") or "10")
 # fall over terskelen skal fanges av et menneske før prisvarsler går ut,
 # ikke publiseres blindt.
 EXTREME_DROP14_THRESHOLD = float(os.environ.get("EXTREME_DROP14_THRESHOLD") or "0.5")
+# «Godt kjøp»-flaggene (deal_gap i v_prislop_products, migrasjon 0021): hvis
+# én butikk står for en for stor andel av flaggene KAN det bety en parser som
+# systematisk leser for LAV pris (medlemspris, utgått kampanjefelt) — det
+# motsatte fortegnet av det >80 %-identisk-pris-vakten fanger. Men det kan
+# like gjerne være et helt lovlig sesongsalg, og en hard feiling ville da
+# blokkert ALLE dataoppdateringer på grunn av et ekte salg (samme felle som
+# re-split-vakten: en vakt med feil utløsergrense gjør mer skade enn nytte).
+# Derfor ADVARSEL, aldri rød kjøring. Kalibrering 17. juli: 47 flagg totalt,
+# største butikk-andel ~21 %.
+DEAL_SHARE_WARN_THRESHOLD = float(os.environ.get("DEAL_SHARE_WARN_THRESHOLD") or "0.5")
+DEAL_SHARE_MIN_FLAGS = int(os.environ.get("DEAL_SHARE_MIN_FLAGS") or "10")
 
 
 def check_price_concentration(cur) -> bool:
@@ -112,6 +126,43 @@ def check_extreme_drop14(cur) -> bool:
     return False
 
 
+def warn_deal_concentration(cur) -> None:
+    """Kun ADVARSEL — påvirker aldri exit-koden (se kommentaren ved
+    DEAL_SHARE_WARN_THRESHOLD for hvorfor). Logger alltid en oppsummering av
+    godt kjøp-flaggene, og advarer hvis én butikk står for >=
+    DEAL_SHARE_WARN_THRESHOLD av dem (ved minst DEAL_SHARE_MIN_FLAGS flagg
+    totalt)."""
+    cur.execute(
+        """
+        select deal_store, count(*) as cnt
+        from public.v_prislop_products
+        where deal_gap is not null
+        group by deal_store
+        order by cnt desc
+        """
+    )
+    rows = cur.fetchall()
+    total = sum(cnt for _, cnt in rows)
+    if not total:
+        print("Gode kjøp: ingen produkter flagget.")
+        return
+
+    top_store, top_cnt = rows[0]
+    print(
+        f"Gode kjøp: {total} produkter flagget, størst andel {top_store} "
+        f"({top_cnt}/{total})."
+    )
+    if total >= DEAL_SHARE_MIN_FLAGS and top_cnt / total >= DEAL_SHARE_WARN_THRESHOLD:
+        print(
+            f"ADVARSEL: {top_store} står for {top_cnt}/{total} "
+            f"({top_cnt / total:.0%}) av godt kjøp-flaggene. Kan være et "
+            "lovlig sesongsalg — men sjekk at parseren ikke systematisk "
+            "leser for lav pris (medlemspris/kampanjefelt) før lista deles "
+            "videre.",
+            file=sys.stderr,
+        )
+
+
 def check_oslosportslager_brand_scope(cur) -> bool:
     """True hvis OK. Flagger merker der Oslo Sportslager er ENESTE butikk med
     tilbud — signaturen på at ALLOWED_BRANDS i oslosportslager_parser.py har
@@ -183,6 +234,7 @@ def main() -> int:
     ok = check_price_concentration(cur)
     ok = check_extreme_drop14(cur) and ok
     ok = check_oslosportslager_brand_scope(cur) and ok
+    warn_deal_concentration(cur)
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")
