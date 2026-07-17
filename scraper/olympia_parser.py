@@ -49,7 +49,14 @@ BUTTON_TAG_RE = re.compile(r'<input[^>]*class="renderAssProd[^"]*"[^>]*>', re.I)
 VALUE_ATTR_RE = re.compile(r'value="([^"]*)"')
 PID_ATTR_RE = re.compile(r'data-productid="(\d+)"')
 
-PRICE_BY_ID_RE = re.compile(r'id="price-value-(\d+)"[^>]*>\s*kr\s*([\d\s ]+?)\s*<', re.I)
+# Prisen sitter enten på id="price-value-<id>" (normalpris — samme span har
+# ofte BÅDE id= og class= med identisk verdi), ELLER, for nedsatte varer, KUN
+# på class="price-value-<id>" ("Din pris"-spannet mangler id=; den krysset-ut
+# originalprisen sitter i et helt umerket <span> uten id/class i det hele
+# tatt og fanges derfor aldri av denne regexen — riktig, vi vil ha "Din pris").
+PRICE_BY_ID_RE = re.compile(
+    r'(?:id="price-value-(\d+)"|class="[^"]*\bprice-value-(\d+)\b[^"]*")'
+    r'[^>]*>\s*kr\s*([\d\s ]+?)\s*<', re.I)
 ADD_TO_CART_ID_RE = re.compile(r'id="add-to-cart-button-(\d+)"', re.I)
 
 _GENDER_MAP = {"herre": "herre", "dame": "dame", "unisex": "unisex",
@@ -73,9 +80,10 @@ def _buttons(html: str) -> list[tuple[str, str]]:
 
 def _prices_by_id(html: str) -> dict[str, int]:
     out = {}
-    for pid, raw in PRICE_BY_ID_RE.findall(html):
-        digits = re.sub(r"[\s ]", "", raw)
-        if digits.isdigit():
+    for m in PRICE_BY_ID_RE.finditer(html):
+        pid = m.group(1) or m.group(2)
+        digits = re.sub(r"[\s ]", "", m.group(3))
+        if pid and digits.isdigit():
             out[pid] = int(digits)
     return out
 
