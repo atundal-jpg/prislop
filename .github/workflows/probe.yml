@@ -19,6 +19,7 @@ on:
           - probe_olympia_titles.py
           - probe_olympia_count.py
           - probe_olympia_sizeblocks.py
+          - probe_olympia_dryrun.py
           - probe_oslosportslager.py
           - probe_oslosportslager_verify.py
           - probe_adidas.py
