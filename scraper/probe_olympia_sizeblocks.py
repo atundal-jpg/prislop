@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-probe_olympia_sizeblocks.py — diagnostisk: dumper de PER-STØRRELSE data-blokkene
-RenderProductDetails bytter inn (jf. probe_olympia_ajax), for å designe en presis
-parser for pris/lager per størrelse.
-
-Knappene i "Velg variant"-gridet gir bare data-productid + størrelsesverdi.
-RenderProductDetails leser derimot innhold fra egne containere merket
-data-productid="<id>" (`.additional-details`, `.overview-info-wrapper`,
-`.prices .overview` osv.) — denne proben finner ALLE slike containere på én
-PDP og dumper råteksten deres, slik at pris/lager-mønsteret per størrelse blir
-synlig før parseren skrives.
+probe_olympia_sizeblocks.py (v2) — diagnostisk: v1 viste at data-productid KUN
+sitter på "Velg variant"-knappene (input) og på ÉN ytre div (default-valgt
+størrelse) — de 12-13 ".prices"/".additional-details"-blokkene (som matcher
+antall størrelser i lager-ord-skanningen) er IKKE selv tagget med
+data-productid. Denne runden dumper konteksten RUNDT hver slik blokk (300 tegn
+før, 600 etter) for å finne den faktiske identifikator-mekanismen (id=, annen
+data-attributt, eller ren DOM-rekkefølge/indeks) som binder blokk til
+størrelse — nødvendig for en presis pris/lager-per-størrelse-parser.
 Stdlib only. probe.yml (script=probe_olympia_sizeblocks.py).
 """
 from __future__ import annotations
@@ -18,15 +16,7 @@ import urllib.request
 
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.olympiasport.no"
-SAMPLES = [
-    "/adidas-supernova-rise-3-crystal-jadesilver-metallic",
-    "/saucony-guide-19-womens-blacksilver",
-]
-
-# Finn hver data-productid="<id">-bærende blokk (div/li/section) og ta med
-# en generøs bit av det som følger, til neste data-productid eller en
-# fornuftig lengdegrense.
-BLOCK_START = re.compile(r'<(\w+)[^>]*\bdata-productid="(\d+)"[^>]*>', re.I)
+SAMPLE = "/adidas-supernova-rise-3-crystal-jadesilver-metallic"
 
 
 def get(path):
@@ -39,30 +29,26 @@ def get(path):
         return ""
 
 
+def dump_context(html, needle_re, label, max_hits=4):
+    print(f"\n### {label} ###")
+    hits = list(re.finditer(needle_re, html, re.I))
+    print(f"{len(hits)} treff totalt, viser {min(max_hits, len(hits))}")
+    for m in hits[:max_hits]:
+        lo, hi = max(0, m.start() - 300), min(len(html), m.end() + 600)
+        chunk = re.sub(r"\s+", " ", html[lo:hi])
+        print("  ---")
+        print("  ", chunk)
+
+
 def main():
-    for path in SAMPLES:
-        print("=" * 74)
-        print("PDP:", path)
-        html = get(path)
-        print("  HTTP-lengde:", len(html))
+    html = get(SAMPLE)
+    print("PDP:", SAMPLE, "  HTTP-lengde:", len(html))
 
-        starts = list(BLOCK_START.finditer(html))
-        print(f"  {len(starts)} data-productid-bærende tagger funnet (alle typer)")
-        seen_ids = []
-        for m in starts:
-            tag, pid = m.group(1), m.group(2)
-            if pid in seen_ids:
-                continue
-            seen_ids.append(pid)
-            snippet = html[m.start():m.start() + 900]
-            print(f"\n  -- <{tag} data-productid=\"{pid}\"> --")
-            print("   ", re.sub(r"\s+", " ", snippet))
-
-        # Direkte søk på kjente RenderProductDetails-mål, uavhengig av tag:
-        for cls in ["additional-details", "overview-info-wrapper", "prices",
-                    "attribute", "morvare"]:
-            hits = list(re.finditer(r'class="[^"]*\b' + re.escape(cls) + r'\b[^"]*"', html, re.I))
-            print(f"  class~='{cls}': {len(hits)} treff")
+    dump_context(html, r'class="[^"]*\bprices\b[^"]*"', "class~=prices")
+    dump_context(html, r'class="[^"]*\badditional-details\b[^"]*"', "class~=additional-details")
+    dump_context(html, r'legg i handlekurv', "tekst: legg i handlekurv")
+    dump_context(html, r'utsolgt', "tekst: utsolgt")
+    dump_context(html, r'\bid="[^"]*\d{6}[^"]*"', "id= med 6-sifret tall (mulig productid-bærer)")
 
 
 if __name__ == "__main__":
