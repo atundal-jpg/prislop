@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
 """
-probe_olympia.py (v5) — GO/NO-GO: bærer Olympia-PDP-er EAN + størrelser?
+probe_olympia.py (v6) — GO/NO-GO per merke: bærer Olympia-PDP-er EAN + størrelser?
 
 v4 avgjorde: Olympia fører i praksis ikke Asics (1 utsolgt pigg), og den ene
 PDP-en manglet JSON-LD/EAN/størrelser — men produktet var utsolgt, så det kan
-være falskt negativt. v5 tester ADIDAS (og Saucony som kontroll): enumererer
-merkeprodukter fra løpekategoriene med det verifiserte tile-uttrekket, og
-inspiserer PDP-er som er PÅ LAGER for: EAN/gtin, størrelses-struktur (grid/
-select/attributter), artikkelkode, per-størrelse-lager.
-GO = EAN + størrelser finnes -> Olympia inn i Adidas/Saucony-bølgen.
-NO-GO = mangler broen -> stryk Olympia, Oslo Sportslager rykker opp.
+være falskt negativt. v5 testet kun Adidas (og Saucony som kontroll) og fant
+GO for begge. v6 utvider til ALLE ti merkene i den kanoniske katalogen
+(brands.py) — samme kilde som resten av pipelinen bruker — for å avgjøre
+hvilke Olympia faktisk fører, og om PDP-ene for hvert av dem har samme
+bro-data (EAN + størrelsesstruktur) som Adidas/Saucony hadde.
+
+Kategorisidene (asfaltsko/terrengsko/joggesko-herre/joggesko-dame, side 1-4)
+hentes KUN ÉN gang totalt og gjenbrukes for alle ti merkene (ikke én runde
+per merke) — ellers blir det 10x flere kategori-fetches enn v5 og risiko for
+å sprenge probe.yml sin timeout-minutes: 10.
+
+Merke-treff: href-slug-prefiks (bindestrek- ELLER sammenskrevet variant, jf.
+probe_brands.py) ELLER merkenavnet funnet i tile-tittelen — sistnevnte er
+robust for tobords-merker som «New Balance» der URL-slug er ukjent på
+forhånd (og der Olympia kan bruke en tredje variant vi ikke har gjettet).
+
+GO (per merke) = >0 produkter i løpekategoriene OG EAN funnet på minst én av
+de tre første PDP-ene (økt fra 2 i v5 — ett enkelt utsolgt produkt ga
+falskt NO-GO for Asics i v4).
+NO-GO = mangler broen, eller merket finnes ikke i kategoriene.
 Stdlib only. probe.yml (script=probe_olympia.py).
 """
 from __future__ import annotations
@@ -18,10 +32,11 @@ import re
 import urllib.request
 import urllib.error
 
+from brands import BRANDS as CANON_BRANDS
+
 UA = "Mozilla/5.0 (prislop-probe)"
 BASE = "https://www.olympiasport.no"
 CATS = ["/asfaltsko", "/terrengsko", "/joggesko-herre", "/joggesko-dame"]
-BRANDS = ("adidas", "saucony")
 
 TILE = re.compile(
     r'class="product-item"[^>]*data-productid="\d+">\s*'
@@ -56,17 +71,34 @@ def tiles(html):
     return out
 
 
-def enumerate_brand(brand):
-    found = []
+def collect_all_tiles():
+    all_tiles = []
     for cat in CATS:
         st, html = get(cat)
         last = min(max([int(x) for x in PAGER.findall(html)] or [1]), 4)
         pages = [html] + [get(f"{cat}?pagenumber={p}")[1] for p in range(2, last + 1)]
         for pg in pages:
             for h, ti in tiles(pg or ""):
-                if h.lower().startswith(f"/{brand}-") and h not in [x for x, _ in found]:
-                    found.append((h, ti))
-    return found
+                if (h, ti) not in all_tiles:
+                    all_tiles.append((h, ti))
+    return all_tiles
+
+
+def slug_variants(brand):
+    b = brand.lower()
+    return {b.replace(" ", "-"), b.replace(" ", "")}
+
+
+def brand_matches(brand, href, title):
+    h = href.lower()
+    if any(h.startswith(f"/{v}-") for v in slug_variants(brand)):
+        return True
+    t = title.lower()
+    return bool(re.search(r"(?:^|[\s(/])" + re.escape(brand.lower()) + r"(?:[\s)/]|$)", t))
+
+
+def enumerate_brand(brand, all_tiles):
+    return [(h, ti) for h, ti in all_tiles if brand_matches(brand, h, ti)]
 
 
 def probe_pdp(path, title):
@@ -122,22 +154,24 @@ def probe_pdp(path, title):
 
 
 def main():
-    print("probe_olympia v5 — GO/NO-GO på Adidas/Saucony-PDP-er (på lager)\n")
+    print("probe_olympia v6 — GO/NO-GO per merke, alle ti fra brands.py\n")
+    all_tiles = collect_all_tiles()
+    print("Totalt %d unike produkt-tiles funnet i kategoriene (side 1-4 hver)\n" % len(all_tiles))
     verdict = {}
-    for brand in BRANDS:
+    for brand in CANON_BRANDS:
         print("=" * 74)
-        found = enumerate_brand(brand)
-        print("MERKE %s: %d produkter i løpekategoriene (side 1-4)" % (brand.upper(), len(found)))
+        found = enumerate_brand(brand, all_tiles)
+        print("MERKE %s: %d produkter i løpekategoriene" % (brand.upper(), len(found)))
         for h, ti in found[:6]:
             print("   ", h, "(%s)" % ti)
         got_ean = False
-        for h, ti in found[:2]:
+        for h, ti in found[:3]:
             got_ean = probe_pdp(h, ti) or got_ean
         verdict[brand] = (len(found), got_ean)
     print("\n" + "=" * 74)
     print("GO/NO-GO:")
     for b, (n, ean) in verdict.items():
-        print("  %-8s: %3d produkter, EAN på PDP: %s -> %s"
+        print("  %-12s: %3d produkter, EAN på PDP: %s -> %s"
               % (b, n, ean, "GO (integrerbar)" if (n and ean) else "NO-GO / mangler bro-data"))
 
 
