@@ -1187,9 +1187,17 @@ function applyDealFromUrl(){
 async function buildHeroStats(){
   let stores = 0;
   try{
-    const rows = await api("v_prislop_offers?select=store");
-    stores = new Set(rows.map(r => r.store)).size;
+    // v_prislop_stats (0026): butikk-tellingen server-side, 1 rad.
+    const s = await api("v_prislop_stats?select=n_stores");
+    stores = (s && s[0] && Number(s[0].n_stores)) || 0;
   }catch(e){ stores = 0; }
+  if(!stores){
+    // fallback til 0026 er anvendt: tell distinkte butikker klient-side
+    try{
+      const rows = await api("v_prislop_offers?select=store");
+      stores = new Set(rows.map(r => r.store)).size;
+    }catch(e){ stores = 0; }
+  }
   el("herostats").innerHTML =
       '<span class="pill"><b>'+PRODUCTS.length+'</b> løpesko-modeller</span>'
     + '<span class="pill">Butikker tilkoblet: <b>'+(stores||"–")+'</b></span>'
@@ -1206,12 +1214,19 @@ function buildFilterOptions(){
   fetchSizeOptions();
 }
 async function fetchSizeOptions(){
+  let rows;
   try{
-    const rows = await api("v_prislop_sizes?select=size&in_stock=is.true");
-    const sizes = [...new Set(rows.map(r => r.size).filter(Boolean))].sort((a,b)=>sizeSort(a)-sizeSort(b));
-    el("f-size").insertAdjacentHTML("beforeend",
-      sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(sizeDisp(s))+'</option>').join(""));
-  }catch(e){/* størrelsesfilter valgfritt */}
+    // v_prislop_size_options (0026): distinct server-side, ~40 rader i
+    // stedet for alle lager-radene i v_prislop_sizes.
+    rows = await api("v_prislop_size_options?select=size");
+  }catch(e){
+    // fallback til 0026 er anvendt: gammel, tung spørring
+    try{ rows = await api("v_prislop_sizes?select=size&in_stock=is.true"); }
+    catch(e2){ return; /* størrelsesfilter valgfritt */ }
+  }
+  const sizes = [...new Set(rows.map(r => r.size).filter(Boolean))].sort((a,b)=>sizeSort(a)-sizeSort(b));
+  el("f-size").insertAdjacentHTML("beforeend",
+    sizes.map(s => '<option value="'+esc(s)+'">Str. '+esc(sizeDisp(s))+'</option>').join(""));
 }
 
 function bindControls(){
