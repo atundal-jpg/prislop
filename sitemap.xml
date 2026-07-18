@@ -55,6 +55,16 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://xn--prislp-fya.no/om.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/personvern.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://xn--prislp-fya.no/?product=0013356f-6747-430f-b3ee-3d70724c1a38</loc>
     <lastmod>2026-07-15</lastmod>
     <changefreq>daily</changefreq>
