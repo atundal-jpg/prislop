@@ -10,9 +10,8 @@ on:
         default: probe_discover_counts.py
         options:
           - probe_brukas.py
-          - probe_bull_es.py
-          - probe_sportholding_listing.py
           - probe_sportholding_sizefields.py
+          - probe_esales_links.py
           - probe_foss.py
           - probe_olympia.py
           - probe_olympia_ajax.py

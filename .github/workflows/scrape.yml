@@ -90,8 +90,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add sitemap.xml
           git commit -m "sitemap: oppdater produkt-URL-er [skip ci]"
-          git pull --rebase origin main
-          git push origin main
+          # retry med backoff: en push-kollisjon (annen commit på main under
+          # kjøringen) skal ikke gjøre en ellers grønn harvest rød
+          for i in 1 2 3 4; do
+            git pull --rebase origin main && git push origin main && exit 0
+            echo "Push-forsøk $i feilet — prøver igjen…"
+            sleep $((2**i))
+          done
+          echo "::error::Klarte ikke å pushe sitemap etter 4 forsøk."
+          exit 1
 
       - name: Dødmannsping — vellykket kjøring
         if: success()
