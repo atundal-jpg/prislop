@@ -505,9 +505,9 @@ const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const REST = SB_URL + "/rest/v1/";
 const HEADERS = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
 
-const STORE_NAMES = { xxl:"XXL", torshov:"Torshov Sport", intersport:"Intersport",
-  getinspired:"Get Inspired", anton:"Anton Sport", sport1:"Sport 1", zalando:"Zalando" };
-const storeName = s => STORE_NAMES[s] || (s ? s[0].toUpperCase()+s.slice(1) : "Butikk");
+/* v_prislop_offers/-sizes leverer butikkens VISNINGSNAVN (stores.name),
+   ikke slug — vis det som det er. */
+const storeName = s => s || "Butikk";
 const nok = n => new Intl.NumberFormat("nb-NO").format(Math.round(Number(n)));
 const cap = s => s ? s[0].toUpperCase()+s.slice(1) : "";
 const sizeNum = s => parseFloat(String(s).replace(",", ".")) || 0;
@@ -625,6 +625,12 @@ let PRODUCT_BY_ID = {};
 const productUrl = pid => CANON_BASE + "?product=" + encodeURIComponent(pid);
 /* ---- SEO/AEO · kategori-landingssider: ?kategori=<slug> ---- */
 const kategoriUrl = slug => CANON_BASE + "?kategori=" + encodeURIComponent(slug);
+/* history.pushState/replaceState bruker RELATIVE URL-er: absolutte prod-URL-er
+   kaster SecurityError på alle andre origins (localhost/preview), og da døde
+   ruting og filtre under testing. Canonical/OG/JSON-LD beholder de absolutte. */
+const relProductUrl  = pid  => "./?product=" + encodeURIComponent(pid);
+const relKategoriUrl = slug => "./?kategori=" + encodeURIComponent(slug);
+const REL_PRISFALL = "./?prisfall", REL_DEAL = "./?gode-kjop", REL_HOME = "./";
 
 /* ---- Trafikkloop · prisfall-landingsside: ?prisfall ----
    Ingen egen datahenting: drop14 ligger allerede per produkt i
@@ -1067,17 +1073,17 @@ function renderDealIntro(){
 function syncListUrl(){
   const params = new URLSearchParams(location.search);
   if(filters.prisfall){
-    if(location.href !== PRISFALL_URL) history.replaceState({}, "", PRISFALL_URL);
+    if(location.search !== "?prisfall") history.replaceState({}, "", REL_PRISFALL);
     applyPrisfallMeta();
   }else if(filters.deal){
-    if(location.href !== DEAL_URL) history.replaceState({}, "", DEAL_URL);
+    if(location.search !== "?gode-kjop") history.replaceState({}, "", REL_DEAL);
     applyDealMeta();
   }else if(filters.kat && KAT_LABELS[filters.kat]){
-    const url = kategoriUrl(filters.kat);
-    if(location.href !== url) history.replaceState({}, "", url);
+    if(params.get("kategori") !== filters.kat || params.get("product"))
+      history.replaceState({}, "", relKategoriUrl(filters.kat));
     applyKategoriMeta(filters.kat);
   }else if(params.get("product") || params.get("kategori") || params.has("prisfall") || params.has("gode-kjop")){
-    history.replaceState({}, "", HOME_URL);
+    history.replaceState({}, "", REL_HOME);
     applyHomeMeta();
   }
 }
@@ -1096,7 +1102,7 @@ function openFromUrl(){
     card = document.querySelector('.product[data-pid="' + pid + '"]');
   }
   if(!card) return;
-  history.replaceState({ pid }, "", productUrl(pid));  // fest state uten ny history-oppføring
+  history.replaceState({ pid }, "", relProductUrl(pid));  // fest state uten ny history-oppføring
   openCard(card, { push:false, scroll:true });
 }
 // synk DOM mot URL ved fram/tilbake i nettleseren
@@ -1353,16 +1359,16 @@ async function toggle(btn){
     closeCard(card);
     // lukk → tilbake til lista vi kom fra (prisfall/gode kjøp/kategori/forside)
     if(filters.prisfall){
-      history.pushState({}, "", PRISFALL_URL);
+      history.pushState({}, "", REL_PRISFALL);
       applyPrisfallMeta();
     }else if(filters.deal){
-      history.pushState({}, "", DEAL_URL);
+      history.pushState({}, "", REL_DEAL);
       applyDealMeta();
     }else if(filters.kat && KAT_LABELS[filters.kat]){
-      history.pushState({}, "", kategoriUrl(filters.kat));
+      history.pushState({}, "", relKategoriUrl(filters.kat));
       applyKategoriMeta(filters.kat);
     }else{
-      history.pushState({}, "", HOME_URL);
+      history.pushState({}, "", REL_HOME);
       applyHomeMeta();
     }
   }else{
@@ -1378,7 +1384,7 @@ async function openCard(card, opt){
   if(btn) btn.setAttribute("aria-expanded", "true");
   await loadBody(card);
   const pid = card.dataset.pid;
-  if(opt.push !== false) history.pushState({ pid }, "", productUrl(pid));
+  if(opt.push !== false) history.pushState({ pid }, "", relProductUrl(pid));
   applyProductMeta(pid);
   if(opt.scroll) scrollToCard(card);
 }
@@ -1394,17 +1400,24 @@ async function loadBody(card){
   const body = el("body-"+pid);
   body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">Henter butikker og størrelser …</span></div>';
   try{
+    // Cache PROMISENE (ikke await i array-literalen): med await inni lista
+    // kjørte de tre hentingene sekvensielt før Promise.all fikk se dem.
     const [offers, sizes, series] = await Promise.all([
-      offerCache[pid]  || (offerCache[pid]  = await fetchOffers(pid)),
-      sizeCache[pid]   || (sizeCache[pid]   = await fetchSizes(pid)),
-      seriesCache[pid] || (seriesCache[pid] = await fetchSeries(pid)),
+      offerCache[pid]  || (offerCache[pid]  = fetchOffers(pid)),
+      sizeCache[pid]   || (sizeCache[pid]   = fetchSizes(pid)),
+      seriesCache[pid] || (seriesCache[pid] = fetchSeries(pid)),
     ]);
+    // resten av koden leser cachene synkront (sizeIndexFor/pickSize) —
+    // legg de ferdige radene tilbake når de har landet
+    offerCache[pid] = offers; sizeCache[pid] = sizes; seriesCache[pid] = series;
     const product = PRODUCTS.find(p => p.product_id === pid);
     body.innerHTML = sparkHTML(series, product) + storesHTML(offers, pid, null) + sizesHTML(pid, sizes);
   }catch(e){
     body.innerHTML = '<div class="sizes" style="background:#fff"><span class="hint">'
       + 'Klarte ikke å hente detaljene. Lukk og åpne kortet for å prøve igjen.</span></div>';
     card.dataset.loaded = "";
+    // ikke la et avvist promise bli liggende i cachen — da ville retry feile evig
+    [offerCache, sizeCache, seriesCache].forEach(c => { if(c[pid] && !Array.isArray(c[pid])) delete c[pid]; });
   }
 }
 
@@ -1614,7 +1627,9 @@ async function submitAlert(ev, pid){
   const form = el("af-"+pid), cf = el("cf-"+pid);
   const email = form.querySelector(".email").value.trim();
   const maxPrice = parseInt(form.querySelector(".price").value, 10) || null;
-  const sizeBtn = document.querySelector("#sg-"+pid+" .chip.sel, .product .chip.sel");
+  // KUN dette kortets valgte chip: lukkede kort beholder .sel i DOM-en, så et
+  // dokument-globalt søk kunne lagre varselet med et ANNET produkts størrelse.
+  const sizeBtn = document.querySelector("#body-"+pid+" .chip.sel");
   const size = sizeBtn ? sizeBtn.dataset.size : null;
   cf.className = "confirm show"; cf.textContent = "Sender …";
   try{
