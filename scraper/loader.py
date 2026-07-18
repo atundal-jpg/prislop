@@ -312,18 +312,25 @@ def upsert_offer(cur, store_id: int, variant_id: str, rec: dict, cache: RunCache
                 and price is not None and old_price is not None
                 and float(price) >= float(old_price)):
             return offer_id, False           # dyrere duplikat i samme kjøring
+        # coalesce: en parser som ikke fant pris (price=None, f.eks. regexglipp
+        # på én side) skal ikke NULLE en eksisterende god pris — behold den
+        # gamle til neste vellykkede lesning. Historikk skrives uansett aldri
+        # for None (price_changed-vilkåret under).
         cur.execute(
             """
             update prislop.offers
                set store_sku = %s, url = %s, currency = %s, store_color = %s,
-                   current_price = %s, in_stock = %s, last_seen_at = now()
+                   current_price = coalesce(%s, current_price),
+                   in_stock = %s, last_seen_at = now()
              where id = %s
             """,
             (rec.get("store_sku"), rec["url"], currency, rec.get("color"),
              price, any_stock, offer_id),
         )
         price_changed = price is not None and price != old_price
-        offers_map[variant_id] = [offer_id, price, run_ts]   # now() i tx = run_ts
+        # cachen skal speile DB-en: ved price=None står den gamle prisen igjen
+        effective_price = price if price is not None else old_price
+        offers_map[variant_id] = [offer_id, effective_price, run_ts]   # now() i tx = run_ts
     else:
         cur.execute(
             """
