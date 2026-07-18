@@ -208,6 +208,14 @@ def check_oslosportslager_brand_scope(cur) -> bool:
     return False
 
 
+def _has_ok_column(cur) -> bool:
+    cur.execute(
+        "select 1 from information_schema.columns where table_schema = 'prislop'"
+        " and table_name = 'run_stats' and column_name = 'ok'"
+    )
+    return cur.fetchone() is not None
+
+
 def main() -> int:
     conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
     conn.autocommit = True
@@ -218,16 +226,29 @@ def main() -> int:
     cur.execute("select count(*) from prislop.offers")
     offers = cur.fetchone()[0]
 
-    cur.execute(
-        "select products_count, offers_count, run_at"
-        " from prislop.run_stats order by run_at desc limit 1"
-    )
+    # Baseline = siste kjøring som IKKE feilet (migrasjon 0025). Før 0025 lå
+    # fella her: raden ble skrevet FØR delta-sjekken, så en rød kjøring
+    # flyttet baselinen og en re-run gikk grønt uten at noe var fikset. Nå
+    # kjøres alle sjekker først, baselinen hentes fra siste ok-kjøring
+    # (ok is not false — rader fra før 0025 har null og regnes som ok), og
+    # kjøringens egen rad skrives til slutt med utfallet.
+    has_ok = _has_ok_column(cur)
+    if has_ok:
+        cur.execute(
+            "select products_count, offers_count, run_at from prislop.run_stats"
+            " where ok is not false order by run_at desc limit 1"
+        )
+    else:
+        print(
+            "MERK: prislop.run_stats mangler ok-kolonnen — kjør migrasjon "
+            "0025_run_stats_ok.sql. Faller tilbake til gammel baseline-logikk "
+            "(re-run etter rødt går grønt)."
+        )
+        cur.execute(
+            "select products_count, offers_count, run_at"
+            " from prislop.run_stats order by run_at desc limit 1"
+        )
     prev = cur.fetchone()
-
-    cur.execute(
-        "insert into prislop.run_stats (products_count, offers_count) values (%s, %s)",
-        (products, offers),
-    )
 
     print(f"Denne kjøringen: products={products} offers={offers}")
 
@@ -238,23 +259,36 @@ def main() -> int:
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")
-        return 0 if ok else 1
-
-    prev_products, prev_offers, prev_at = prev
-    delta = products - prev_products
-    print(
-        f"Forrige kjøring ({prev_at}): products={prev_products} "
-        f"offers={prev_offers} | \u0394products={delta:+d}"
-    )
-
-    if abs(delta) > TOLERANCE:
+    else:
+        prev_products, prev_offers, prev_at = prev
+        delta = products - prev_products
         print(
-            f"FEIL: |\u0394products|={abs(delta)} > toleranse {TOLERANCE}. "
-            "Mulig re-split av edisjonsprodukter eller masse-sletting — "
-            "undersok normalize.py og siste harvest for varsler sendes.",
-            file=sys.stderr,
+            f"Forrige ok-kjøring ({prev_at}): products={prev_products} "
+            f"offers={prev_offers} | \u0394products={delta:+d}"
         )
-        ok = False
+
+        if abs(delta) > TOLERANCE:
+            print(
+                f"FEIL: |\u0394products|={abs(delta)} > toleranse {TOLERANCE}. "
+                "Mulig re-split av edisjonsprodukter eller masse-sletting — "
+                "undersok normalize.py og siste harvest for varsler sendes.",
+                file=sys.stderr,
+            )
+            ok = False
+
+    # Skriv kjøringens rad TIL SLUTT, med utfallet — en rød kjøring flytter
+    # aldri baselinen (ok=false-rader hoppes over i baseline-spørringen).
+    if has_ok:
+        cur.execute(
+            "insert into prislop.run_stats (products_count, offers_count, ok)"
+            " values (%s, %s, %s)",
+            (products, offers, ok),
+        )
+    else:
+        cur.execute(
+            "insert into prislop.run_stats (products_count, offers_count) values (%s, %s)",
+            (products, offers),
+        )
 
     return 0 if ok else 1
 

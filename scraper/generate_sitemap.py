@@ -83,6 +83,14 @@ def build_xml(rows):
         out.append("    <changefreq>daily</changefreq>")
         out.append("    <priority>0.7</priority>")
         out.append("  </url>")
+    # statiske undersider — uten lastmod (endres sjelden, og en kunstig
+    # lastmod ville bare gitt diff-støy)
+    for page in ("om.html", "personvern.html"):
+        out.append("  <url>")
+        out.append("    <loc>%s%s</loc>" % (BASE, page))
+        out.append("    <changefreq>monthly</changefreq>")
+        out.append("    <priority>0.3</priority>")
+        out.append("  </url>")
     for pid, _subcategory, lastmod in rows:
         out.append("  <url>")
         out.append("    <loc>%s?product=%s</loc>" % (BASE, pid))

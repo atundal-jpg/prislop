@@ -29,6 +29,19 @@ FROM = os.environ.get("ALERT_FROM", "Prisløp <onboarding@resend.dev>")
 UNSUB_URL = os.environ.get(
     "UNSUB_URL",
     "https://agmhjcskkjtnwmhzzckx.supabase.co/functions/v1/alerts-unsub")
+# «Til butikken» går via klikk-redirecten med src=email — samme /ut-lag som
+# frontendens outUrl (CLAUDE.md regel 7). verify_jwt er av på funksjonen
+# nettopp for at e-postklikk (uten auth-header) skal fungere; uten dette
+# gikk varsel-klikkene rett til butikken og ble aldri logget.
+UT_URL = os.environ.get(
+    "UT_URL",
+    "https://agmhjcskkjtnwmhzzckx.supabase.co/functions/v1/ut")
+
+
+def out_url(r: dict) -> str:
+    if r.get("offer_id"):
+        return f"{UT_URL}?offer={r['offer_id']}&src=email"
+    return r["url"]                     # fallback: direkte butikk-URL
 
 TRIGGER_SQL = """
 with best as (
@@ -112,7 +125,7 @@ def build_html(r: dict) -> str:
   <h2 style="margin:0 0 6px">Prisen falt! 🏃</h2>
   <p><strong>{shoe}</strong>{size} er nå <strong>{int(r['best_price'])} kr</strong>
      hos {r['store']} — under grensen din på {int(r['max_price'])} kr.</p>
-  <p><a href="{r['url']}" style="display:inline-block;background:#1f4f4a;color:#fff;
+  <p><a href="{out_url(r)}" style="display:inline-block;background:#1f4f4a;color:#fff;
      padding:12px 20px;border-radius:8px;text-decoration:none">Til butikken →</a></p>
   <p style="color:#777;font-size:13px">Du får denne fordi du fulgte prisen på
      <a href="https://prisløp.no">prisløp.no</a>.
