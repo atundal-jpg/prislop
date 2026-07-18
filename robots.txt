@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
+# Googlebot plukker opp Supabase-API-stier fra JS-en og feiltolker dem som
+# 404-sider (GSC-gjennomgang 14. juli) — de finnes ikke på dette domenet.
+Disallow: /rest/
+Disallow: /functions/
+Disallow: /auth/
 
 Sitemap: https://xn--prislp-fya.no/sitemap.xml
