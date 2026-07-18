@@ -358,6 +358,8 @@ STORES = {
     # Vendor-id per merke fra items' product_vendor/product_vendor_text
     # (probe_bull_vendors, 18. juli — Hoka manglet fordi 13524/Asics var
     # hardkodet). Nytt merke = nytt by_brand-innslag med id fra samme probe.
+    # Nike, Puma, Brooks og New Balance finnes IKKE i Bulls vendor-katalog
+    # (fullstendig facet-dump i samme probe-kjøring) og kan derfor ikke på.
     # «Joggesko barn» ligger i Løpesko-treet og hoppes over i _bull_api_paths —
     # samme scope som KIDS_RE-gaten (GS/PS/TS) i bull_parser; bull_parser
     # henter per-størrelse lager fra produktsidas <select>.
@@ -373,6 +375,14 @@ STORES = {
                                   "product?query=&product_vendor%5B0%5D=13524")},
             "hoka": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
                                  "product?query=&product_vendor%5B0%5D=13490")},
+            "adidas": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                   "product?query=&product_vendor%5B0%5D=672")},
+            "saucony": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                    "product?query=&product_vendor%5B0%5D=13523")},
+            "kiprun": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                   "product?query=&product_vendor%5B0%5D=15887")},
+            "mizuno": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                   "product?query=&product_vendor%5B0%5D=2135")},
         },
         "adapter": _bull,
     },

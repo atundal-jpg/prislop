@@ -9,7 +9,10 @@ v1 av proben fant Hoka = vendor 13490 (fra items' product_vendor/-_text) og
 viste at bull_parser takler Hoka-sider (men manglet colorway-koden — fikset
 ved å lære CODE_RE/CODE_IMG_RE Hoka-formatet 1147911-CSLP).
 
-v2 verifiserer fiksen ende-til-ende mot det ekte API-et:
+v3 (etter merge av Asics+Hoka): by_brand utvidet med Adidas (672),
+Saucony (13523), Kiprun (15887) og Mizuno (2135) — Nike/Puma/Brooks/
+New Balance finnes ikke i Bulls vendor-katalog (facet-dump i v2-loggen).
+Proben verifiserer hele by_brand ende-til-ende mot det ekte API-et:
   1. Dumper product_vendor-FACETEN (alle merkenavn + id-er + antall) —
      autoritativ kilde for fremtidige by_brand-utvidelser.
   2. Kjører discovery.discover(None, "bull", <merke>, …) LIVE for Hoka og
@@ -86,21 +89,46 @@ def main():
 
     # --- 2) discovery.discover LIVE med ny by_brand-konfig -------------------
     print("=" * 78)
-    print("2) DISCOVERY LIVE (ny by_brand-konfig)")
-    for brand in ("Hoka", "Asics"):
-        urls = discovery.discover(None, "bull", brand, "")
-        print(f"  {brand}: {len(urls)} løpesko-URL-er")
-        for u in urls[:5]:
+    print("2) DISCOVERY LIVE (alle merker i by_brand)")
+    first_url: dict[str, str] = {}
+    for b in discovery.STORES["bull"]["by_brand"]:
+        urls = discovery.discover(None, "bull", b, "")
+        print(f"  {b}: {len(urls)} løpesko-URL-er")
+        for u in urls[:3]:
             print(f"    {u}")
+        if urls:
+            first_url[b] = urls[0]
+        if any("barn" in u for u in urls):
+            ok = False
+            print(f"  ✗ {b}: barne-URL-er slapp gjennom skip_category!")
     hoka_urls = discovery.discover(None, "bull", "Hoka", "")
     if SKYWARD_URL in hoka_urls:
         print("  ✓ Skyward X-URL-en er blant Hoka-treffene")
     else:
         ok = False
         print("  ✗ Skyward X-URL-en MANGLER blant Hoka-treffene!")
-    if any("barn" in u for u in hoka_urls):
-        ok = False
-        print("  ✗ barne-URL-er slapp gjennom skip_category!")
+
+    # --- 2b) bull_parser-stikkprøve: første URL per NYTT merke ---------------
+    print("=" * 78)
+    print("2b) PARSER-STIKKPRØVER (nye merker)")
+    for b in ("adidas", "saucony", "kiprun", "mizuno"):
+        u = first_url.get(b)
+        if not u:
+            print(f"  {b}: ingen URL-er å teste (0 løpesko hos Bull nå)")
+            continue
+        html = get_html(u)
+        rec = bull_parser.parse(html, u) if html else None
+        if not rec:
+            ok = False
+            print(f"  ✗ {b}: parse() -> None for {u}")
+            continue
+        n_stock = sum(s["in_stock"] for s in rec["sizes"])
+        print(f"  {b}: brand={rec['brand']!r} model={rec['model']!r} "
+              f"pris={rec['price']} kode={rec['manufacturer_code']!r} "
+              f"str={len(rec['sizes'])} (på lager {n_stock})")
+        if rec["price"] is None or not rec["sizes"]:
+            ok = False
+            print(f"  ✗ {b}: mangler pris eller størrelser! {u}")
 
     # --- 3) bull_parser på Skyward X — nå med kode ---------------------------
     print("=" * 78)
