@@ -353,22 +353,27 @@ STORES = {
         "adapter": _loplabbet,
     },
     # Bull Ski & Kajakk — Drupal Commerce 2. Listing rendres klient-side via
-    # elasticsearch_ui; vi henter den server-rendrede griden fra Drupals
-    # AJAX-rute (?_wrapper_format=drupal_ajax) på Asics-vendor-faceten (13524),
-    # paginert med ?page=N. Produkt-slug inneholder «asics-».
-    # Bull Ski & Kajakk — Drupal Commerce 2. Listing rendres klient-side via
     # elasticsearch_ui, men dataene ligger i et JSON-API: /api/navigation/product
-    # (product_vendor=13524 = Asics), paginert ?page=N (1-indeksert), 32/side.
-    # Vi enumererer Asics-løpesko-URL-ene derfra; bull_parser henter per-størrelse
-    # lager fra produktsidas <select>.
+    # (?query=&product_vendor[0]=<id>), paginert ?page=N (1-indeksert), 32/side.
+    # Vendor-id per merke fra items' product_vendor/product_vendor_text
+    # (probe_bull_vendors, 18. juli — Hoka manglet fordi 13524/Asics var
+    # hardkodet). Nytt merke = nytt by_brand-innslag med id fra samme probe.
+    # «Joggesko barn» ligger i Løpesko-treet og hoppes over i _bull_api_paths —
+    # samme scope som KIDS_RE-gaten (GS/PS/TS) i bull_parser; bull_parser
+    # henter per-størrelse lager fra produktsidas <select>.
     "bull": {
         "name": "Bull Ski & Kajakk",
         "base": "https://bull-ski-kajakk.no",
         "mode": "bull_api",
-        "api_url": ("https://bull-ski-kajakk.no/api/navigation/product"
-                    "?product_vendor%5B0%5D=13524&query="),
         "keep_category": "Løpesko",
+        "skip_category": "Joggesko barn",
         "page_size": 32,
+        "by_brand": {
+            "asics": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                  "product?query=&product_vendor%5B0%5D=13524")},
+            "hoka": {"api_url": ("https://bull-ski-kajakk.no/api/navigation/"
+                                 "product?query=&product_vendor%5B0%5D=13490")},
+        },
         "adapter": _bull,
     },
     # Brukås Sport — nopCommerce (Digitroll). Server-rendret. Hvert produkt er
@@ -657,13 +662,16 @@ def _looks_like_product(href: str, brand: str, model: str) -> bool:
 
 
 def _bull_api_paths(cfg: dict) -> list[str]:
-    """Enumerer Asics-løpesko-URL-er fra Bulls elasticsearch_ui JSON-API.
-    /api/navigation/product gir 32 produkter per side (?page=N, 1-indeksert) med
-    `url` + `product_category_text` inline. Vi paginerer til alt (`found`) er
-    hentet og beholder kun produkter med «Løpesko» i kategoriteksten."""
+    """Enumerer løpesko-URL-er for ETT merke (api_url bærer vendor-faceten)
+    fra Bulls elasticsearch_ui JSON-API. /api/navigation/product gir 32
+    produkter per side (?page=N, 1-indeksert) med `url` +
+    `product_category_text` inline. Vi paginerer til alt (`found`) er hentet,
+    beholder kun produkter med «Løpesko» i kategoriteksten og hopper over
+    skip_category («Joggesko barn»)."""
     base = cfg["base"]
     api = cfg["api_url"]
     keep = cfg.get("keep_category", "Løpesko")
+    skip = cfg.get("skip_category")
     size = cfg.get("page_size", 32)
     headers = {
         "User-Agent": "Mozilla/5.0 (prislop)",
@@ -686,7 +694,10 @@ def _bull_api_paths(cfg: dict) -> list[str]:
         if found is None:
             found = d.get("found") or 0
         for it in items:
-            if keep and keep not in (it.get("product_category_text") or []):
+            cats = it.get("product_category_text") or []
+            if keep and keep not in cats:
+                continue
+            if skip and skip in cats:
                 continue
             u = it.get("url") or it.get("schema_metatag_url")
             if not u:
@@ -926,8 +937,9 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
     # Flermerke: butikker med "by_brand" får merke-spesifikke felter lagt oppå
     # basiskonfigen (search_url, listing_urls, marker_re, cat_slug, brand_filter,
     # brand_re, prod_re…). Mangler merket i by_brand -> butikken fører/støtter
-    # det ikke -> []. Butikker UTEN by_brand er merke-bundne til Asics (Bull —
-    # trenger egen vendor-id-recon per merke).
+    # det ikke -> []. Alle butikker har i dag by_brand (Bull fikk sin 18. juli
+    # via vendor-id-recon); else-grenen under er en Asics-bundet sikkerhetsnett
+    # for ev. fremtidige butikker uten.
     per = base_cfg.get("by_brand")
     if per is not None:
         if b not in per:
@@ -1040,7 +1052,8 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         _LIST_CACHE[cache_key] = out[:1000]
         return _LIST_CACHE[cache_key]
 
-    # Bull (Drupal Commerce 2): enumerer Asics-løpesko fra JSON-API-et, paginert.
+    # Bull (Drupal Commerce 2): enumerer merkets løpesko fra JSON-API-et
+    # (vendor-facet per merke i by_brand), paginert.
     if cfg.get("mode") == "bull_api":
         if cache_key in _LIST_CACHE:
             return _LIST_CACHE[cache_key]

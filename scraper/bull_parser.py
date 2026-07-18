@@ -4,7 +4,8 @@ bull_parser.py — parser produktsider hos Bull Ski & Kajakk (Drupal Commerce 2)
 Alt vi trenger ligger i server-HTML (ingen JS):
   - og:title -> modell + (ev.) kjønn; <title>-prefiks -> merke.
   - colorway-kode (full, m/ farge-suffiks): primært fra og:image-filnavnet
-    (.../product_image/1011b867-023-...jpg), ellers «Produktnummer: 1011B867-101».
+    (.../product_image/1011b867-023-...jpg eller …-1147911-cslp-5.jpg),
+    ellers «Produktnummer: 1011B867-101» (Asics) / «Art#: 1147911-CSLP» (Hoka).
   - Farge: «Farge: COBALT BURST/LIGHT ORANGE».
   - Pris: «1 399,-».
   - STØRRELSER med per-størrelse lager fra <select>: «37.5» = på lager,
@@ -20,9 +21,15 @@ import re
 OG_TITLE_RE = re.compile(r'property="og:title"\s+content="([^"]+)"', re.I)
 OG_IMAGE_RE = re.compile(r'property="og:image"\s+content="([^"]+)"', re.I)
 TITLE_RE = re.compile(r"<title>([^<|]+)", re.I)
-# Full Asics colorway-kode: 4 siffer + bokstav + 3 siffer + «-» + 2-3 siffer.
-CODE_RE = re.compile(r"(\d{4}[A-Za-z]\d{3}-\d{2,3})")
-CODE_IMG_RE = re.compile(r"/product_image/(\d{4}[a-z]\d{3}-\d{2,3})", re.I)
+# Fulle colorway-koder: Asics «1011B867-101» (4 siffer + bokstav + 3 siffer +
+# «-» + 2-3 siffer), Hoka «1147911-CSLP» (7 siffer + «-» + 2-5 bokstaver).
+# (?<!\d) hindrer at de 7 siste sifrene i et lengre tall (EAN/SKU) matcher.
+CODE_RE = re.compile(r"(?<!\d)(\d{4}[A-Za-z]\d{3}-\d{2,3}|\d{7}-[A-Za-z]{2,5})\b")
+# Asics-koden står først i og:image-filnavnet; Hoka-koden midt i
+# («…alpine-blue-1147911-cslp-5.jpg») — derfor lazy prefiks innen filbanen.
+CODE_IMG_RE = re.compile(
+    r"/product_image/[^\"'?]*?(?<!\d)(\d{4}[a-z]\d{3}-\d{2,3}|\d{7}-[a-z]{2,5})",
+    re.I)
 # Asics-farger er VERSALER («BLACK/NEW LEAF»). Versal-krav avviser bærekraft-
 # blurben («prosess som reduserer vannforbruk…») som tidligere ble fanget.
 FARGE_RE = re.compile(
@@ -129,7 +136,9 @@ def parse(html: str, url: str = "") -> dict | None:
     if im and (cm := CODE_IMG_RE.search(im.group(1))):
         code = cm.group(1).upper()
     if not code:
-        pm = re.search(r"Produktnummer[^0-9]{0,40}?" + CODE_RE.pattern, html, re.I)
+        # Asics-sider merker koden «Produktnummer:», Hoka-sider «Art#:»
+        pm = re.search(r"(?:Produktnummer|Art\s*#)[^0-9]{0,40}?" + CODE_RE.pattern,
+                       html, re.I)
         if pm:
             code = pm.group(1).upper()
     if not code and (cm := CODE_RE.search(html)):
