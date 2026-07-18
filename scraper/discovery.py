@@ -488,6 +488,40 @@ _LIST_CACHE: dict[str, list[str]] = {}
 # saucony/kiprun) deler ÉN sitemap-nedlasting per kjøring.
 _FOSS_LOC_CACHE: dict[str, list[str]] = {}
 
+def _api_json(url: str, headers: dict, *, data: bytes | None = None,
+              method: str = "GET", timeout: int = 30, retries: int = 3):
+    """urllib-JSON-kall med retry + backoff for discovery-API-ene (eSales/
+    Jetshop/Bull), som ikke går via Fetcher. Kaster siste feil videre etter
+    `retries` forsøk — kalleren avgjør om det er fatalt.
+
+    Bakgrunn: uten retry kunne én forbigående nettverksfeil midt i
+    pagineringen gi en DELVIS URL-liste, og loaderens mark_unseen_stale
+    ville da feilaktig utsolgt-flagget resten av butikkens katalog."""
+    last: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8", "replace"))
+        except Exception as e:
+            last = e
+            if attempt < retries:
+                time.sleep(1.5 * attempt)
+    raise last
+
+
+def _guard_partial(collected: int, total, tag: str):
+    """Nekter å levere en beviselig delvis liste (< 80 % av API-ets fasit) —
+    da skal butikk-/merkehøsten heller feile helt (0 records => load() kjøres
+    ikke og ingenting stale-flagges) enn at resten av katalogen utsolgt-
+    flagges. Ved total ukjent/0 innsamlet gjør vi ingenting: tom liste lar
+    ev. fallback-skraping ta over."""
+    if total and collected and collected < 0.8 * total:
+        raise RuntimeError(
+            f"{tag}: bare {collected}/{total} produkter hentet — "
+            "nekter å bruke delvis liste (ville stale-flagget resten)")
+
+
 # Minimal Jetshop-spørring: kategoriens produkter, offset-paginert.
 _JETSHOP_QUERY = (
     "query P($id:Int!,$first:Int!,$offset:Int!){"
@@ -540,11 +574,9 @@ def _jetshop_paths(api: dict, cat_id: str) -> list[str]:
             "variables": {"id": int(cat_id), "first": first, "offset": offset},
         }).encode("utf-8")
         try:
-            req = urllib.request.Request(uri, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            data = _api_json(uri, headers, data=body, method="POST", timeout=30)
         except Exception as e:
-            print(f"  [torshov] GraphQL-feil offset={offset}: {e}")
+            print(f"  [torshov] GraphQL-feil offset={offset} (etter retry): {e}")
             break
         node = (((data.get("data") or {}).get("category") or {}).get("products")) or {}
         if total is None:
@@ -560,6 +592,7 @@ def _jetshop_paths(api: dict, cat_id: str) -> list[str]:
         offset += first
         if total and len(paths) >= total:
             break
+    _guard_partial(len(paths), total, "torshov/jetshop")
     return paths
 
 
@@ -615,16 +648,14 @@ def _esales_paths(api: dict) -> list[str]:
         "Referer": "https://www.xxl.no/",
         "User-Agent": "Mozilla/5.0 (prislop)",
     }
-    paths, seen, skip, total = [], set(), 0, None
+    paths, seen, skip, total, fetched = [], set(), 0, None, 0
     while skip <= 2000:                          # sikkerhetstak
         params = dict(common, skip=str(skip))
         url = api["url"] + "?" + urlencode(params)
         try:
-            req = urllib.request.Request(url, data=b"", headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            data = _api_json(url, headers, data=b"", method="POST", timeout=30)
         except Exception as e:
-            print(f"  [xxl] eSales-feil skip={skip}: {e}")
+            print(f"  [xxl] eSales-feil skip={skip} (etter retry): {e}")
             break
         primary = data.get("primaryList") or {}
         if total is None:
@@ -634,6 +665,9 @@ def _esales_paths(api: dict) -> list[str]:
             break
         for g in groups:
             for p in (g.get("products") or []):
+                # fetched teller FØR kjønnsfilteret — det er API-ets fasit
+                # (totalHits) vi måler dekningen mot, ikke voksen-delmengden.
+                fetched += 1
                 link = p.get("link")
                 if not link:
                     continue
@@ -645,6 +679,7 @@ def _esales_paths(api: dict) -> list[str]:
         skip += limit
         if total and skip >= total:
             break
+    _guard_partial(fetched, total, "xxl/esales")
     return paths
 
 
@@ -689,20 +724,19 @@ def _bull_api_paths(cfg: dict) -> list[str]:
         "Referer": base + "/sko/lopesko",
     }
     out, seen = [], set()
-    found = None
+    found, fetched = None, 0
     for page in range(1, cfg.get("max_pages", 30) + 1):
         try:
-            req = urllib.request.Request(f"{api}&page={page}", headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                d = json.loads(resp.read().decode("utf-8", "replace"))
+            d = _api_json(f"{api}&page={page}", headers, timeout=60)
         except Exception as e:
-            print(f"  [bull] API-feil page={page}: {e}")
+            print(f"  [bull] API-feil page={page} (etter retry): {e}")
             break
         items = d.get("items") if isinstance(d.get("items"), list) else []
         if not items:
             break
         if found is None:
             found = d.get("found") or 0
+        fetched += len(items)
         for it in items:
             cats = it.get("product_category_text") or []
             if keep and keep not in cats:
@@ -718,6 +752,7 @@ def _bull_api_paths(cfg: dict) -> list[str]:
                 out.append(full)
         if found and page * size >= found:      # hele settet hentet
             break
+    _guard_partial(fetched, found, "bull/api")
     return out
 
 
@@ -1084,14 +1119,18 @@ def discover(fetcher, store_slug: str, brand: str, model: str, limit: int = 8) -
         _LIST_CACHE[cache_key] = _foss_paths(cfg)[:1000]
         return _LIST_CACHE[cache_key]
 
+    # Take-all: sjekk cachen FØR listesiden hentes — ellers re-fetches den
+    # én gang per modell i MODELS-loopen. (Latent i dag: alle butikker har
+    # egen mode over; gjelder ev. fremtidige take-all-butikker uten.)
+    if cfg.get("take_all") and cfg.get("link_re") and cache_key in _LIST_CACHE:
+        return _LIST_CACHE[cache_key]
+
     html = fetcher.get(cfg["search_url"](f"{brand} {model}"))
     if not html:
         return []
 
     # Take-all: kategori-stores der hele sida er riktig merke+kategori.
     if cfg.get("take_all") and cfg.get("link_re"):
-        if cache_key in _LIST_CACHE:
-            return _LIST_CACHE[cache_key]
         out, seen = [], set()
         for path in cfg["link_re"].findall(html):
             url = urljoin(cfg["base"], path)
