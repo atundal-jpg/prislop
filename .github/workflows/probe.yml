@@ -27,6 +27,7 @@ on:
           - probe_adidas.py
           - probe_brands.py
           - probe_bull_price.py
+          - probe_bull_vendors.py
           - probe_xxl_price.py
           - probe_xxl_facets.py
           - probe_xxl_esales.py
