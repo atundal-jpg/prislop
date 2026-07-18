@@ -9,7 +9,7 @@ Alt vi trenger ligger i server-HTML (ingen JS):
   - Farge: «Farge: COBALT BURST/LIGHT ORANGE».
   - Pris: «1 399,-».
   - STØRRELSER med per-størrelse lager fra <select>: «37.5» = på lager,
-    «36 -- Ikke på lager» = utsolgt. (Ingen per-størrelse EAN hos Bull; vi matcher
+    «36 -- Ikke på lager» = utsolgt. Hoka bruker tredjedeler («42 2/3»). (Ingen per-størrelse EAN hos Bull; vi matcher
     på colorway-koden, som er lik formatet hos Intersport/Sport 1.)
 
 parse(html, url) -> OfferRecord (loader.load-kompatibel).
@@ -102,8 +102,13 @@ def _sizes(html: str) -> list[dict]:
         for o in opts:
             if not o or "velg" in o.lower():           # «- Velg størrelse -»
                 continue
-            label = re.split(r"\s*--\s*", o)[0].strip()
-            if not re.match(r"\d{2}([.,]\d)?$", label):
+            label = re.sub(r"\s+", " ", re.split(r"\s*--\s*", o)[0].strip())
+            # hel («42»), halv («42.5»/«42,5») eller tredjedel («42 2/3» —
+            # Hoka). Tredjedeler beholder mellomrom+brøk, samme konvensjon
+            # som Löplabbet/Oslo Sportslager, så størrelsene matcher på tvers
+            # av butikker. (Før 18. juli falt tredjedeler ut her — Bull-Hoka
+            # sto da kun med helstørrelser i katalogen.)
+            if not re.match(r"\d{2}([.,]\d|\s[12]/3)?$", label):
                 continue
             in_stock = "ikke på lager" not in o.lower()
             sizes.append({
