@@ -53,9 +53,10 @@ def fetch(url: str) -> str | None:
         return None
 
 
-def extract_variants_raw(html: str) -> str | None:
-    """Samme teknikk som sportholding_parser._extract_variants, men rå tekst."""
-    i = html.find('variants\\":[')
+def extract_block(html: str, marker: str) -> str | None:
+    """Balansert []-blokk etter marker i escaped RSC-JSON — samme teknikk som
+    sportholding_parser._extract_variants, men generisk og rå tekst."""
+    i = html.find(marker)
     if i < 0:
         return None
     start = html.find('[', i)
@@ -70,6 +71,10 @@ def extract_variants_raw(html: str) -> str | None:
                 break
         k += 1
     return html[start:k + 1].replace('\\\\', '\\').replace('\\"', '"')
+
+
+def extract_variants_raw(html: str) -> str | None:
+    return extract_block(html, 'variants\\":[')
 
 
 def main() -> int:
@@ -108,6 +113,17 @@ def main() -> int:
         print(f"  size-/EU-aktige nøkler i payloaden ({len(hits)}):")
         for key, ctx in sorted(hits.items()):
             print(f"    {key:<24} | {ctx}")
+
+        # Runde 2 (18. juli): første kjøring viste at variantene IKKE har noe
+        # EU-felt, men at payloaden har en `sizeGuides`-struktur — butikkens
+        # egen størrelsesguide. Dump HELE blokken: har den UK<->EU-tabellen,
+        # er det butikkens autoritative kilde for size_chart (Hoka!).
+        raw_sg = extract_block(html, 'sizeGuides\\":[')
+        if raw_sg is None:
+            print("  Ingen 'sizeGuides'-blokk funnet.")
+        else:
+            print(f"  sizeGuides-blokk ({len(raw_sg)} tegn):")
+            print("  " + raw_sg[:12000])
     return 0
 
 
