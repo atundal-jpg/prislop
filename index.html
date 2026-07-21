@@ -1455,9 +1455,16 @@ function sparkHTML(series, product){
   var W=560, H=56, n=pts.length;
   var prices = pts.map(function(r){ return r.p; });
   var lo=Math.min.apply(null,prices), hi=Math.max.apply(null,prices);
-  var span=(hi-lo)||1;
+  /* Gulv på y-spennet: minst 2 % av prisnivået. Uten dette autoskaleres
+     y-aksen til seriens min/maks, og en 1-kroners endring (f.eks.
+     1 900 → 1 899) tegnes som et stup over hele grafhøyden — samtidig som
+     delta-teksten sier «uendret». Endringer under ~2 % skal SE flate ut;
+     reelle prisfall (>2 %) er upåvirket. Den nesten-flate kurven sentreres
+     vertikalt så den ikke ligger klistret i bunnen. */
+  var span=Math.max(hi-lo, hi*0.02, 1);
+  var yLo=lo - (span-(hi-lo))/2;
   var x=function(i){ return n===1?0:(i/(n-1))*W; };
-  var y=function(p){ return H-4 - ((p-lo)/span)*(H-8); };
+  var y=function(p){ return H-4 - ((p-yLo)/span)*(H-8); };
   var line="", area="M0,"+H.toFixed(1);
   pts.forEach(function(r,i){
     var px=x(i).toFixed(1), py=y(r.p).toFixed(1);
