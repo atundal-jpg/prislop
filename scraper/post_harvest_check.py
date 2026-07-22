@@ -8,7 +8,7 @@ eller utilsiktet masse-sletting. Sjekker også om én enkelt pris dominerer
 en butikks tilbud (PRICE_SHARE_THRESHOLD, standard 80%) — typisk tegn på
 at en parser har brutt sammen og returnerer samme (feil) pris for alt.
 Sjekker også om drop14 i v_prislop_products overstiger
-EXTREME_DROP14_THRESHOLD (standard 50%) — to av to tidligere fall i den
+EXTREME_DROP14_THRESHOLD (standard 51%) — to av to tidligere fall i den
 størrelsen har vært parser-bugger, ikke ekte salg (se migrasjon 0019).
 Sjekker også om Oslo Sportslager har blitt ENESTE kilde for et merke
 (check_oslosportslager_brand_scope, 16. juli) — merke-gaten for den
@@ -37,8 +37,11 @@ PRICE_SHARE_MIN_OFFERS = int(os.environ.get("PRICE_SHARE_MIN_OFFERS") or "10")
 # er. Men hos oss har 2 av 2 tidligere fall i denne størrelsen (Bull-
 # fraktbanneret, XXL isSelected-bugen) vært parser-bugger, ikke salg — så et
 # fall over terskelen skal fanges av et menneske før prisvarsler går ut,
-# ikke publiseres blindt.
-EXTREME_DROP14_THRESHOLD = float(os.environ.get("EXTREME_DROP14_THRESHOLD") or "0.5")
+# ikke publiseres blindt. Terskelen ligger på 0.51, ikke 0.50: et verifisert
+# ekte salg (Asics Gel-Flux 8 til 649 kr, 22. juli) landet på nøyaktig 50 %
+# og holdt kjøringen rød i tre omganger — et menneske hadde da allerede
+# godkjent fallet, og runde kampanjekutt («halv pris») treffer 50 % ofte.
+EXTREME_DROP14_THRESHOLD = float(os.environ.get("EXTREME_DROP14_THRESHOLD") or "0.51")
 # «Godt kjøp»-flaggene (deal_gap i v_prislop_products, migrasjon 0021): hvis
 # én butikk står for en for stor andel av flaggene KAN det bety en parser som
 # systematisk leser for LAV pris (medlemspris, utgått kampanjefelt) — det
