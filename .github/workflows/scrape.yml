@@ -10,9 +10,9 @@ on:
         required: false
         default: "10"
       extreme_drop14_threshold:
-        description: "check_extreme_drop14 sin terskel (default 0.5 = 50%). Hev midlertidig når et fall er MENNESKE-VERIFISERT ekte (sjekket rå butikkpris) — ikke bare for å slippe unna varselet."
+        description: "check_extreme_drop14 sin terskel (default 0.51 = 51%, MÅ matche defaulten i post_harvest_check.py — inputen overstyrer koden). Hev midlertidig når et fall er MENNESKE-VERIFISERT ekte (sjekket rå butikkpris) — ikke bare for å slippe unna varselet."
         required: false
-        default: "0.5"
+        default: "0.51"
 
 concurrency:
   group: scrape-prislop
