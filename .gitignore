@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# marketing/: genererte kort og nedlastede fonter committes ikke
+marketing/*.png
+marketing/fonts/
