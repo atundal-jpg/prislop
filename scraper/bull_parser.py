@@ -32,7 +32,8 @@ TITLE_RE = re.compile(r"<title>([^<|]+)", re.I)
 #   Asics    «1013A163-400»  4 siffer + bokstav + 3 siffer + «-» + 2-3 siffer
 #   Hoka     «1168691-BWHT»  7 siffer + «-» + bokstaver
 #   Kiprun   «369831-PINK»   6 siffer + «-» + bokstaver
-#   Saucony  «S100981-1021»  bokstav + 6 siffer + «-» + 3-4 siffer
+#   Saucony  «S100981-1021»  bokstav + 5-6 siffer + «-» + 3-4 siffer
+#            «S21023-200»    — Saucony har TO kodelengder, se under
 # (adidas har ingen slik kode på siden — se ADIDAS_CODE_IMG_RE.)
 #
 # Hvorfor dette ble en bug: PR #18 la Saucony, adidas og Kiprun til i
@@ -45,9 +46,18 @@ TITLE_RE = re.compile(r"<title>([^<|]+)", re.I)
 # (?<!\d) beholdes: den hindrer at halen av et lengre tall (EAN/GTIN) matcher
 # siffer-alternativene. Saucony-alternativet har i tillegg (?<![A-Za-z]) så det
 # ikke kan starte midt i et ord.
+#
+# Saucony-lengdene (rettet 27. juli, probe_bull_code_source): merket bruker TO
+# formater — «S100981-1021» (6+4) på Endorphin-linja og «S21023-200» (5+3) på
+# Triumph/Peregrine/Ride/Xodus. Første versjon dekket bare 6+4. Sidene med 5+3
+# har HVERKEN «Produktnummer»-etikett, så begge de forankrede kildene bommet,
+# og koden ble hentet av fri-tekst-grenen — fra «Relaterte produkter»-
+# karusellen. Resultat: en Saucony CAPS-kode (2632400-SHAKEOUT) sto på fem
+# ulike sko, en HATT-kode (1170330-BLK) på fire, en quarter-zip-kode
+# (1164155-TLS) på både en Saucony- og en Kiprun-sko.
 _CODE_ALT = (r"\d{4}[A-Za-z]\d{3}-\d{2,3}"                 # Asics
              r"|\d{6,7}-[A-Za-z]{2,8}"                     # Hoka / Kiprun
-             r"|(?<![A-Za-z])[A-Za-z]\d{6}-\d{3,4}")       # Saucony
+             r"|(?<![A-Za-z])[A-Za-z]\d{5,6}-\d{3,4}")     # Saucony (5+3 og 6+4)
 CODE_RE = re.compile(r"(?<!\d)(" + _CODE_ALT + r")\b")
 # Asics-koden står først i og:image-filnavnet; Hoka-koden midt i
 # («…alpine-blue-1147911-cslp-5.jpg») — derfor lazy prefiks innen filbanen.
@@ -81,6 +91,9 @@ KIDS_RE = re.compile(r"\b(?:GS|PS|TS)\b")
 PRICE_CURRENT_RE = re.compile(
     r'class="current[^"]*"\s*>\s*(?:<strong>\s*)?(\d[\d\s\u00a0]{0,7}),-', re.I)
 LD_RE = re.compile(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
+# Skillelinje mot tilbehørs-karusellen nederst på siden — alt etter denne
+# tilhører ANDRE produkter og skal aldri brukes som kilde til denne sidens kode.
+RELATED_RE = re.compile(r"Relaterte\s+produkter", re.I)
 
 
 def _ld_price(html: str) -> int | None:
@@ -215,8 +228,17 @@ def parse(html: str, url: str = "") -> dict | None:
                        html, re.I)
         if pm:
             code = pm.group(1).upper()
-    if not code and (cm := CODE_RE.search(html)):
-        code = cm.group(1).upper()
+    if not code:
+        # Siste utvei: fri tekst — men KUN i hoveddelen av dokumentet.
+        # «Relaterte produkter»-karusellen nederst er full av tilbehør
+        # (caps, hatter, quarter-zip) med kode-formede filnavn, og et
+        # uforankret søk i hele HTML-en plukket dem systematisk opp så snart
+        # de forankrede kildene bommet (27. juli, probe_bull_code_source).
+        # Samme klasse feil som fraktbanneret: aldri første regex-treff i rå
+        # HTML uten å vite hvilken blokk man står i.
+        head = html[:rm.start()] if (rm := RELATED_RE.search(html)) else html
+        if cm := CODE_RE.search(head):
+            code = cm.group(1).upper()
 
     color = None
     fm = FARGE_RE.search(html)

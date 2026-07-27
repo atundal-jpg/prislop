@@ -63,6 +63,12 @@ URLS = [
     "/sko/lopesko/terrengsko/kiprun-kipsummit-race-dame",
     "/sko/lopesko/lettvekt-konkurransesko/saucony-endorphin-pro-4-dame-4",
     "/sko/lopesko/treningssko/saucony-ride-19-herre-0",
+    # URL-er som forsvant fra harvesten 12:53 — 404 her betyr at Bull har
+    # avlistet dem (alle var allerede utsolgt), ikke at parseren mistet dem.
+    "/sko/lopesko/treningssko/saucony-triumph-23-herre",
+    "/sko/lopesko/treningssko/saucony-triumph-23-herre-3",
+    "/sko/lopesko/treningssko/saucony-triumph-23-dame-2",
+    "/sko/lopesko/terrengsko/saucony-xodus-ultra-4-herre-0",
 ]
 
 TAG_RE = re.compile(r"<[^>]+>")

@@ -126,6 +126,63 @@ delete from prislop.offers o
  using _bull_orphans d
  where o.id = d.id;
 
+-- ---------------------------------------------------------------------------
+-- DEL 2: nullstill KONTAMINERTE koder (27. juli, etter første harvest med den
+-- nye parseren).
+--
+-- Parseren leste i én kjøring kode fra «Relaterte produkter»-karusellen for
+-- Saucony-sider uten «Produktnummer»-etikett der og:image-koden hadde et
+-- format den ikke kjente ennå (S21023-200, 5+3 siffer). Resultatet var
+-- TILBEHØRS-koder på sko: en caps-kode (2632400-SHAKEOUT) på fem ulike sko,
+-- en hatt-kode (1170330-BLK) på fire, en quarter-zip-kode (1164155-TLS) på
+-- både en Saucony- og en Kiprun-sko. Parseren er rettet (forankret kilde +
+-- kutt før karusellen), men radene står igjen med feil nøkkel.
+--
+-- Uten denne nullstillingen ville neste harvest lest RIKTIG kode, ikke funnet
+-- den i (store_sku, produkt)-broen, og laget en ny variant + et nytt tilbud
+-- ved siden av — akkurat den rad-multipliseringen vi nettopp fjernet.
+-- Nullstilt SKU gjør derimot at URL-fallbacken i loaderen adopterer raden og
+-- skriver den korrekte koden inn i den.
+--
+-- Identifikasjonen er selvforklarende og trenger ingen hardkodet liste: en
+-- colorway-kode tilhører per definisjon ETT produkt, så en store_sku som hos
+-- Bull peker på flere product_id er beviselig lest fra feil sted.
+--
+-- MERK: etter dette steget finnes det ferske Bull-tilbud med store_sku = NULL,
+-- så VAKT 2 øverst vil avbryte en ny kjøring av denne migrasjonen. Det er
+-- riktig — den skal kjøres én gang, og neste harvest fyller inn kodene.
+-- Settet plukkes ut FØR noe endres, så steg 2b ser samme rader som 2a.
+create temporary table _bull_kontaminert on commit drop as
+with kontaminert as (
+    select o.store_sku
+      from prislop.offers o
+      join prislop.stores s on s.id = o.store_id
+      join prislop.variants v on v.id = o.variant_id
+     where s.slug = 'bull' and o.store_sku is not null
+     group by o.store_sku
+    having count(distinct v.product_id) > 1
+)
+select o.id as offer_id, o.variant_id, o.store_sku
+  from prislop.offers o
+  join prislop.stores s on s.id = o.store_id
+ where s.slug = 'bull'
+   and o.store_sku in (select store_sku from kontaminert);
+
+do $$
+declare n int; k int;
+begin
+    select count(*), count(distinct store_sku) into n, k from _bull_kontaminert;
+    raise notice 'Nullstiller % Bull-rader med % kontaminerte koder.', n, k;
+end $$;
+
+-- 2a) tilbudet mister nøkkelen, så URL-fallbacken adopterer raden neste harvest
+update prislop.offers o set store_sku = null
+  from _bull_kontaminert k where o.id = k.offer_id;
+
+-- 2b) varianten mister den feilaktige produsentkoden
+update prislop.variants v set manufacturer_code = null
+ where v.id in (select variant_id from _bull_kontaminert);
+
 -- Variantene duplikatene pekte på står nå uten tilbud. Vi sletter KUN de som
 -- er helt tomme etter slettingen over — en variant kan deles med andre
 -- butikker, og de skal ikke røres.
