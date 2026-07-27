@@ -19,6 +19,9 @@ merket.
 Logger også en oppsummering av «godt kjøp»-flaggene (deal_gap, migrasjon
 0021) og ADVARER — uten å feile — hvis én butikk dominerer flaggene
 (warn_deal_concentration).
+ADVARER også (27. juli, uten å feile) om to butikk-nivå-signaturer:
+rad-multiplisering (warn_row_multiplication) og butikker som stille har
+sluttet å levere (warn_silent_stores).
 Feiler steget, stoppes også utsending av prisvarsler og dødmannspinget
 uteblir, slik at healthchecks.io varsler.
 """
@@ -53,6 +56,34 @@ EXTREME_DROP14_THRESHOLD = float(os.environ.get("EXTREME_DROP14_THRESHOLD") or "
 # største butikk-andel ~21 %.
 DEAL_SHARE_WARN_THRESHOLD = float(os.environ.get("DEAL_SHARE_WARN_THRESHOLD") or "0.5")
 DEAL_SHARE_MIN_FLAGS = int(os.environ.get("DEAL_SHARE_MIN_FLAGS") or "10")
+# «Ferske» tilbud = sett i denne harvesten. Kjøreplanen er hver 6. time, så
+# 12 t dekker siste kjøring med god margin uten å dra inn den forrige.
+FRESH_HOURS = int(os.environ.get("FRESH_HOURS") or "12")
+# RAD-MULTIPLISERING (Bull-bugen 27. juli): to ferske tilbud i samme butikk med
+# BÅDE samme url OG samme store_sku er per definisjon rader loaderen ikke kunne
+# skille — den lagde en ny i stedet for å oppdatere den gamle. Bull sto med 156
+# slike av 816 ferske tilbud (19 %) fordi store_sku var NULL for
+# Saucony/adidas/Kiprun; alle andre butikker lå på 0–5 rader (≤ 1 %).
+#
+# Hvorfor akkurat (url, store_sku) og ikke «tilbud > distinkte URL-er»: Oslo
+# Sportslager har helt lovlig ~2 fargeveier per URL (1 065 tilbud / 544 URL-er
+# = 1,96), altså et HØYERE forhold enn Bull hadde med bugen (1,24). Et rått
+# forhold ville derfor gitt falsk positiv på OSL og likevel bommet på Bull.
+# Med SKU-en med i nøkkelen skiller OSLs fargeveier lag, og bare de virkelig
+# ikke-skillbare radene telles.
+#
+# ADVARSEL, aldri rød kjøring — samme myke linje som deal-flagg-vakten: en
+# butikk kan ha noen få legitime duplikater (samme artikkel på to URL-er), og
+# en hard feiling ville blokkert alle dataoppdateringer for det.
+DUP_SHARE_WARN_THRESHOLD = float(os.environ.get("DUP_SHARE_WARN_THRESHOLD") or "0.05")
+DUP_MIN_ROWS = int(os.environ.get("DUP_MIN_ROWS") or "5")
+DUP_MIN_OFFERS = int(os.environ.get("DUP_MIN_OFFERS") or "20")
+# STILLE BUTIKK: Get Inspired forsvant fra harvesten 14. juni og ble stående
+# med sine gamle rader i en måned uten at noe fanget det — mark_unseen_stale
+# rører kun butikker som FAKTISK var med i kjøringen, og en butikk som gir 0
+# records kaller aldri load(). 24 t = fire kjøringer, så en enkelt forbigående
+# fetch-feil ikke gir støy.
+STALE_STORE_HOURS = int(os.environ.get("STALE_STORE_HOURS") or "24")
 
 
 def check_price_concentration(cur) -> bool:
@@ -166,6 +197,109 @@ def warn_deal_concentration(cur) -> None:
         )
 
 
+def warn_row_multiplication(cur) -> None:
+    """Kun ADVARSEL (se DUP_SHARE_WARN_THRESHOLD). Flagger butikker der en
+    vesentlig andel av de ferske tilbudene er rader loaderen ikke kunne skille
+    fra hverandre — samme (url, store_sku) flere ganger.
+
+    Dette er signaturen på at en parser slutter å levere nøkkelen sin: ny
+    variant + nytt tilbud for de samme fargeveiene ved hver kjøring. Den
+    eksisterende >80 %-identisk-pris-vakten fanger den IKKE — Bull hadde 104
+    distinkte priser blant de multipliserte radene, siden hver duplikatrad
+    arver den ekte prisen fra siden den kom fra."""
+    cur.execute(
+        """
+        with fresh as (
+            select store_id, url, store_sku
+            from prislop.offers
+            where last_seen_at > now() - make_interval(hours => %s)
+        ), grp as (
+            select store_id, count(*) - 1 as extra
+            from fresh
+            group by store_id, url, store_sku
+            having count(*) > 1
+        ), tot as (
+            select store_id,
+                   count(*) as fresh_offers,
+                   count(distinct url) as fresh_urls
+            from fresh
+            group by store_id
+        )
+        select s.name, t.fresh_offers, t.fresh_urls,
+               coalesce(d.dup_rows, 0) as dup_rows
+        from tot t
+        join prislop.stores s on s.id = t.store_id
+        left join (select store_id, sum(extra) as dup_rows from grp group by store_id) d
+               on d.store_id = t.store_id
+        order by coalesce(d.dup_rows, 0)::float / nullif(t.fresh_offers, 0) desc nulls last
+        """,
+        (FRESH_HOURS,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        print("Rad-multiplisering: ingen ferske tilbud å måle på.")
+        return
+
+    worst = []
+    for name, fresh_offers, fresh_urls, dup_rows in rows:
+        if (fresh_offers >= DUP_MIN_OFFERS and dup_rows >= DUP_MIN_ROWS
+                and dup_rows / fresh_offers >= DUP_SHARE_WARN_THRESHOLD):
+            worst.append((name, fresh_offers, fresh_urls, dup_rows))
+    total_dups = sum(r[3] for r in rows)
+    print(
+        f"Rad-multiplisering: {total_dups} duplikatrader (samme url+store_sku) "
+        f"blant ferske tilbud siste {FRESH_HOURS} t, over {len(rows)} butikker."
+    )
+    for name, fresh_offers, fresh_urls, dup_rows in worst:
+        print(
+            f"ADVARSEL: {name}: {dup_rows}/{fresh_offers} ferske tilbud "
+            f"({dup_rows / fresh_offers:.0%}) er duplikater på (url, store_sku) "
+            f"— {fresh_offers} tilbud fordelt på {fresh_urls} URL-er. Sjekk at "
+            "parseren fortsatt leser artikkelkode/SKU for alle merker i "
+            "butikken; uten nøkkel lager loaderen ny rad hver kjøring.",
+            file=sys.stderr,
+        )
+
+
+def warn_silent_stores(cur) -> None:
+    """Kun ADVARSEL. Flagger aktive butikker uten ET ENESTE ferskt tilbud siste
+    STALE_STORE_HOURS timer — butikken har stille sluttet å levere.
+
+    Ingen annen sjekk fanger dette: en butikk som gir 0 records kaller aldri
+    load(), så mark_unseen_stale rører den ikke, radene blir stående med gammel
+    last_seen_at, og produkttellingen (re-split-vakten) endrer seg ikke før
+    2-døgnsvinduet i v_prislop_products har rullet forbi."""
+    cur.execute(
+        """
+        select s.name,
+               count(o.id) as offers_total,
+               max(o.last_seen_at) as last_seen
+        from prislop.stores s
+        left join prislop.offers o on o.store_id = s.id
+        where s.active
+        group by s.id, s.name
+        having count(o.id) filter (
+                   where o.last_seen_at > now() - make_interval(hours => %s)) = 0
+        order by max(o.last_seen_at) nulls first
+        """,
+        (STALE_STORE_HOURS,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        print(f"Butikk-dekning: alle aktive butikker leverte siste {STALE_STORE_HOURS} t.")
+        return
+
+    for name, offers_total, last_seen in rows:
+        sist = last_seen.isoformat(sep=" ", timespec="minutes") if last_seen else "aldri"
+        print(
+            f"ADVARSEL: {name}: 0 ferske tilbud siste {STALE_STORE_HOURS} t "
+            f"(sist sett: {sist}, {offers_total} rader totalt). Butikken har "
+            "sluttet å levere — sjekk discovery/parser for den, eller sett "
+            "stores.active = false hvis den er avviklet.",
+            file=sys.stderr,
+        )
+
+
 def check_oslosportslager_brand_scope(cur) -> bool:
     """True hvis OK. Flagger merker der Oslo Sportslager er ENESTE butikk med
     tilbud — signaturen på at ALLOWED_BRANDS i oslosportslager_parser.py har
@@ -259,6 +393,8 @@ def main() -> int:
     ok = check_extreme_drop14(cur) and ok
     ok = check_oslosportslager_brand_scope(cur) and ok
     warn_deal_concentration(cur)
+    warn_row_multiplication(cur)
+    warn_silent_stores(cur)
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")
