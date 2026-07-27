@@ -6,6 +6,12 @@ Alt vi trenger ligger i server-HTML (ingen JS):
   - colorway-kode (full, m/ farge-suffiks): primært fra og:image-filnavnet
     (.../product_image/1011b867-023-...jpg eller …-1147911-cslp-5.jpg),
     ellers «Produktnummer: 1011B867-101» (Asics) / «Art#: 1147911-CSLP» (Hoka).
+    Kodeformatet er MERKEAVHENGIG — se CODE_RE. adidas har ingen kode-etikett
+    på siden i det hele tatt; der ligger koden bare i og:image-filnavnet.
+  - store_sku: colorway-koden når vi finner den, ellers JSON-LD `sku` (GTIN).
+    Feltet skal ALDRI være None for en side vi emitter — det er loaderens
+    eneste sterke nøkkel hos Bull (ingen per-størrelse EAN), og en NULL her
+    ga 5 931 duplikatrader mellom 18. og 27. juli (se CODE_RE-notatet).
   - Farge: «Farge: COBALT BURST/LIGHT ORANGE».
   - Pris: «1 399,-».
   - STØRRELSER med per-størrelse lager fra <select>: «37.5» = på lager,
@@ -21,15 +27,44 @@ import re
 OG_TITLE_RE = re.compile(r'property="og:title"\s+content="([^"]+)"', re.I)
 OG_IMAGE_RE = re.compile(r'property="og:image"\s+content="([^"]+)"', re.I)
 TITLE_RE = re.compile(r"<title>([^<|]+)", re.I)
-# Fulle colorway-koder: Asics «1011B867-101» (4 siffer + bokstav + 3 siffer +
-# «-» + 2-3 siffer), Hoka «1147911-CSLP» (7 siffer + «-» + 2-5 bokstaver).
-# (?<!\d) hindrer at de 7 siste sifrene i et lengre tall (EAN/SKU) matcher.
-CODE_RE = re.compile(r"(?<!\d)(\d{4}[A-Za-z]\d{3}-\d{2,3}|\d{7}-[A-Za-z]{2,5})\b")
+# Fulle colorway-koder. Formatene er MERKEAVHENGIGE og lest ut av ekte markup
+# med probe_bull_sku.py (27. juli) — ikke gjettet:
+#   Asics    «1013A163-400»  4 siffer + bokstav + 3 siffer + «-» + 2-3 siffer
+#   Hoka     «1168691-BWHT»  7 siffer + «-» + bokstaver
+#   Kiprun   «369831-PINK»   6 siffer + «-» + bokstaver
+#   Saucony  «S100981-1021»  bokstav + 6 siffer + «-» + 3-4 siffer
+# (adidas har ingen slik kode på siden — se ADIDAS_CODE_IMG_RE.)
+#
+# Hvorfor dette ble en bug: PR #18 la Saucony, adidas og Kiprun til i
+# discovery.by_brand uten at parseren lærte kodeformatene deres. store_sku ble
+# NULL for de merkene, og siden Bull hverken har produsentkode eller
+# per-størrelse EAN i markupen sto loaderen igjen uten nøkkel og laget ny
+# variant + nytt tilbud ved HVER kjøring: 6 441 rader for 663 URL-er, +155 per
+# harvest. Stikkprøvene i PR #18 dekket pris og URL, ikke store_sku.
+#
+# (?<!\d) beholdes: den hindrer at halen av et lengre tall (EAN/GTIN) matcher
+# siffer-alternativene. Saucony-alternativet har i tillegg (?<![A-Za-z]) så det
+# ikke kan starte midt i et ord.
+_CODE_ALT = (r"\d{4}[A-Za-z]\d{3}-\d{2,3}"                 # Asics
+             r"|\d{6,7}-[A-Za-z]{2,8}"                     # Hoka / Kiprun
+             r"|(?<![A-Za-z])[A-Za-z]\d{6}-\d{3,4}")       # Saucony
+CODE_RE = re.compile(r"(?<!\d)(" + _CODE_ALT + r")\b")
 # Asics-koden står først i og:image-filnavnet; Hoka-koden midt i
 # («…alpine-blue-1147911-cslp-5.jpg») — derfor lazy prefiks innen filbanen.
+# Saucony ligger også her («…/product_image/s100981-1021-1.jpg»); Kiprun gjør
+# det IKKE (bildene heter «kd1200-h-ah25-aw25-8953316-003-….jpg»), og tas av
+# «Produktnummer»-etiketten under.
 CODE_IMG_RE = re.compile(
-    r"/product_image/[^\"'?]*?(?<!\d)(\d{4}[a-z]\d{3}-\d{2,3}|\d{7}-[a-z]{2,5})",
-    re.I)
+    r"/product_image/[^\"'?]*?(?<!\d)(" + _CODE_ALT + r")", re.I)
+# adidas: probe_bull_sku fant HVERKEN «Produktnummer», «Art#» eller noe annet
+# id-felt i sideteksten — artikkelkoden (2 bokstaver + 4 siffer) finnes bare
+# som ledd i og:image-filnavnet: «…-semi-blue-burst-jp8680-photoroom.jpg»,
+# «…-carbon-ki6927-photoroom.jpg». Mønsteret er for kort og generisk til å
+# slippes løs på rå HTML eller på andre merkers bildenavn (Kiprun-bildene
+# starter f.eks. med «kd1200»), så det brukes KUN på og:image og KUN når
+# merket er adidas.
+ADIDAS_CODE_IMG_RE = re.compile(
+    r"/product_image/[^\"'?]*?-([A-Za-z]{2}\d{4})(?=[-.])", re.I)
 # Asics-farger er VERSALER («BLACK/NEW LEAF»). Versal-krav avviser bærekraft-
 # blurben («prosess som reduserer vannforbruk…») som tidligere ble fanget.
 FARGE_RE = re.compile(
@@ -70,6 +105,37 @@ def _ld_price(html: str) -> int | None:
                     return int(round(float(p)))
                 except (TypeError, ValueError):
                     pass
+    return None
+
+
+GTIN_RE = re.compile(r"^\d{8,14}$")
+
+
+def _ld_sku(html: str) -> str | None:
+    """GTIN fra JSON-LD (Product -> sku). Backstop for store_sku når vi ikke
+    kjenner merkets kodeformat: alle fem merkene hos Bull har dette feltet, og
+    det er distinkt per fargevariant (probe 27. juli: Endorphin Elite 3 sto med
+    195022001088 og 195022000630 på hver sin farge-URL).
+
+    Poenget er strukturelt, ikke kosmetisk: så lenge store_sku er satt, kan
+    loaderen kjenne igjen raden neste kjøring. Det er bevisst et ANNET felt enn
+    manufacturer_code — GTIN-en er butikk-lokal identitet (offers.store_sku),
+    mens manufacturer_code brukes til å slå sammen samme fargevei på TVERS av
+    butikker og skal derfor bare settes når vi har den ekte colorway-koden."""
+    for m in LD_RE.finditer(html):
+        try:
+            data = json.loads(m.group(1))
+        except Exception:
+            continue
+        nodes = data.get("@graph", [data]) if isinstance(data, dict) else data
+        if not isinstance(nodes, list):
+            nodes = [nodes]
+        for n in nodes:
+            if not (isinstance(n, dict) and n.get("@type") == "Product"):
+                continue
+            sku = str(n.get("sku") or "").strip()
+            if GTIN_RE.match(sku):
+                return sku
     return None
 
 
@@ -140,6 +206,9 @@ def parse(html: str, url: str = "") -> dict | None:
     im = OG_IMAGE_RE.search(html)
     if im and (cm := CODE_IMG_RE.search(im.group(1))):
         code = cm.group(1).upper()
+    if not code and im and brand.lower() == "adidas":
+        if am := ADIDAS_CODE_IMG_RE.search(im.group(1)):
+            code = am.group(1).upper()
     if not code:
         # Asics-sider merker koden «Produktnummer:», Hoka-sider «Art#:»
         pm = re.search(r"(?:Produktnummer|Art\s*#)[^0-9]{0,40}?" + CODE_RE.pattern,
@@ -176,7 +245,9 @@ def parse(html: str, url: str = "") -> dict | None:
         "color": color,
         "manufacturer_code": code,
         "image_url": og_img,
-        "store_sku": code,
+        # code først (stabil, delt med Intersport/Sport 1), GTIN som backstop
+        # slik at feltet aldri blir NULL — se _ld_sku.
+        "store_sku": code or _ld_sku(html),
         "url": url,
         "currency": "NOK",
         "price": price,
