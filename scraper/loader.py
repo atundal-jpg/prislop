@@ -88,8 +88,9 @@ class RunCache:
         for pid, ean, vid in cur.fetchall():
             self.var_by_ean.setdefault((pid, ean), vid)
 
-        # per-butikk (lazy): SKU-bro og eksisterende tilbud
+        # per-butikk (lazy): SKU-bro, URL-bro og eksisterende tilbud
         self._sku: dict[int, dict] = {}
+        self._url: dict[int, dict] = {}
         self._offers: dict[int, dict] = {}
 
     def store_maps(self, cur, store_id: int):
@@ -100,11 +101,31 @@ class RunCache:
                 where o.store_id = %s and o.store_sku is not null
             """, (store_id,))
             self._sku[store_id] = {(sku, pid): vid for sku, pid, vid in cur.fetchall()}
+            # URL-bro (27. juli): siste kjente variant per (url, produkt) i
+            # butikken, sammen med SKU-en den raden står med. Sortert slik at
+            # den FERSKESTE raden vinner — der en URL i dag har mange
+            # duplikat-rader (Bull), konvergerer vi mot den nyeste og lar
+            # oppryddingsmigrasjonen ta resten.
+            cur.execute("""
+                select o.url, v.product_id, o.variant_id, o.store_sku
+                from prislop.offers o join prislop.variants v on v.id = o.variant_id
+                where o.store_id = %s and o.url is not null
+                order by o.last_seen_at desc nulls last, o.id desc
+            """, (store_id,))
+            url_map: dict[tuple, tuple] = {}
+            for url, pid, vid, sku in cur.fetchall():
+                url_map.setdefault((url, pid), (vid, sku))
+            self._url[store_id] = url_map
             cur.execute("select variant_id, id, current_price, last_seen_at "
                         "from prislop.offers where store_id = %s", (store_id,))
             self._offers[store_id] = {vid: [oid, price, seen]
                                       for vid, oid, price, seen in cur.fetchall()}
         return self._sku[store_id], self._offers[store_id]
+
+    def url_map(self, cur, store_id: int) -> dict:
+        """(url, product_id) -> (variant_id, store_sku på den raden)."""
+        self.store_maps(cur, store_id)          # trigger prefetch
+        return self._url[store_id]
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +228,8 @@ def upsert_product(cur, rec: dict, cache: RunCache) -> str:
 
 def get_or_create_variant(cur, product_id: str, rec: dict, cache: RunCache,
                           store_id: int | None = None) -> str:
-    """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> butikk-SKU -> ny.
+    """Kanonisk fargevei: nøkles på produsentkode -> EAN-overlapp -> butikk-SKU
+    -> (butikk, url) -> ny.
     Butikkens eget fargenavn lever på tilbudet (offers.store_color), ikke her,
     slik at samme sko ikke splittes fordi butikkene navngir fargen ulikt.
 
@@ -273,6 +295,41 @@ def get_or_create_variant(cur, product_id: str, rec: dict, cache: RunCache,
             _touch_img(vid)
             return vid
 
+    # 2.75) FALLBACK PÅ (butikk, url) — strukturelt vern mot rad-multiplisering
+    #       (27. juli). Uten dette steget er «ingen nøkkel» det samme som «ny
+    #       artikkel»: Bull ga hverken produsentkode, EAN eller SKU for
+    #       Saucony/adidas/Kiprun (parseren kjente ikke kodeformatet deres),
+    #       og hver harvest laget derfor ny variant + nytt tilbud for de samme
+    #       fargeveiene — 6 441 rader for 663 URL-er, +155 per kjøring.
+    #
+    #       Regelen er bevisst SMAL. Den fyrer bare når butikken ikke ga oss
+    #       noen nøkkel i det hele tatt (sku mangler), ELLER når raden vi
+    #       finner på URL-en selv står uten store_sku — det siste er
+    #       overgangstilfellet «parseren har nettopp lært koden»: raden er
+    #       beviselig en vi aldri kunne nøkle, så vi adopterer den og lar
+    #       upsert_offer skrive den ferske SKU-en inn i stedet for å lage en
+    #       ny rad ved siden av.
+    #
+    #       Den fyrer IKKE når både recorden og den eksisterende raden har
+    #       SKU. Det er med vilje: Oslo Sportslager har ~2 fargeveier per URL
+    #       (1 065 tilbud / 544 URL-er), og der ville en ubetinget URL-nøkkel
+    #       slått distinkte farger sammen og SPIST DEKNING — samme felle som
+    #       XXL-isSelected-fiksen. Har butikken gitt oss en SKU, er SKU-en
+    #       skillet mellom fargene, og URL-en skal ikke overstyre den.
+    if store_id is not None and rec.get("url"):
+        hit = cache.url_map(cur, store_id).get((rec["url"], product_id))
+        if hit and (not sku or hit[1] is None):
+            vid = hit[0]
+            if code and cache.var_code.get(vid) is None:
+                cur.execute(
+                    "update prislop.variants set manufacturer_code = %s where id = %s and manufacturer_code is null",
+                    (code, vid),
+                )
+                cache.var_code[vid] = code
+                cache.var_by_code[(product_id, code)] = vid
+            _touch_img(vid)
+            return vid
+
     # 3) ny fargevei (kanonisk farge = butikkens navn ved første observasjon)
     cur.execute(
         "insert into prislop.variants (product_id, color, manufacturer_code, image_url) "
@@ -284,6 +341,10 @@ def get_or_create_variant(cur, product_id: str, rec: dict, cache: RunCache,
     cache.var_product[vid] = product_id
     if code:
         cache.var_by_code[(product_id, code)] = vid
+    if store_id is not None and rec.get("url"):
+        # innen-transaksjon-synlighet: to records på samme URL i samme kjøring
+        # skal treffe samme variant, ikke lage hver sin.
+        cache.url_map(cur, store_id).setdefault((rec["url"], product_id), (vid, sku))
     return vid
 
 
