@@ -69,9 +69,26 @@ på norsk (nb).
   arver den viste fargens pris. `xxl_parser.py` skal kun emitte
   isSelected-varianten; dekning tapes ikke fordi `discovery.py` besøker hver
   fargevariants egen URL.
-- **Felles signatur for begge:** mange tilbud i én butikk med identisk pris.
-  `post_harvest_check.py` skal flagge enhver butikk der >80 % av tilbudene
-  deler samme pris.
+- **Fargevelger-bugen (28. juli):** når Bulls og:image-filnavn ikke matchet
+  kodemønsteret (`…-s11007-95.jpg`, `…-21020-200.jpg`), tok en uforankret
+  fri-tekst-gren første kode-treff i dokumenthodet — der fargevelgeren lister
+  SØSKEN-fargenes koder. 12 Saucony-grupper delte da én kode, kollapset til
+  én variant i `get_or_create_variant` (som nøkler på kode FØRST), og
+  `upsert_offer` droppet resten som «dyrere duplikat» (`>=`, så like priser
+  også). 23 av 133 Saucony-URL-er forsvant stille fra hver last uten at noe
+  feilet. Lærdom: uten forankret kode skal `manufacturer_code` være `None` og
+  identiteten hvile på GTIN-en i `store_sku` — en lånt kode slår sammen to
+  FORSKJELLIGE sko og spiser dekning.
+- **Felles signatur for de tre kode-/pris-buggene:** aldri første regex-treff
+  i rå HTML uten å vite hvilken blokk man står i (fraktbanner → pris,
+  tilbehørs-karusell → kode, fargevelger → kode).
+- **Felles signatur for Bull/XXL-prisbuggene:** mange tilbud i én butikk med
+  identisk pris. `post_harvest_check.py` skal flagge enhver butikk der >80 %
+  av tilbudene deler samme pris.
+- **Dekningstap er ikke alltid discovery.** Bull 28. juli: discovery leverte
+  691 URL-er, lasten hadde 648. Sjekk ALLTID discovery-output mot lastede
+  URL-er per merke før du mistenker enumereringen — tapet lå i loaderens
+  variantnøkkel.
 - **Re-split-vakten baseline-oppdaterer FØR den feiler** — en re-run etter rødt
   går derfor grønt uten at noe er fikset. Og «Re-run this job» i Actions kjører
   ORIGINAL-commiten; ny konfig krever ny workflow_dispatch.

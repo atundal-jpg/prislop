@@ -93,6 +93,9 @@ PRICE_CURRENT_RE = re.compile(
 LD_RE = re.compile(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
 # Skillelinje mot tilbehørs-karusellen nederst på siden — alt etter denne
 # tilhører ANDRE produkter og skal aldri brukes som kilde til denne sidens kode.
+# (Brukes ikke lenger av parse() etter at fri-tekst-grenen ble fjernet 28.
+# juli — beholdt fordi probe_bull_code_collision.py måler mot den samme
+# skillelinja når kodekildene skal etterprøves.)
 RELATED_RE = re.compile(r"Relaterte\s+produkter", re.I)
 
 
@@ -228,17 +231,33 @@ def parse(html: str, url: str = "") -> dict | None:
                        html, re.I)
         if pm:
             code = pm.group(1).upper()
-    if not code:
-        # Siste utvei: fri tekst — men KUN i hoveddelen av dokumentet.
-        # «Relaterte produkter»-karusellen nederst er full av tilbehør
-        # (caps, hatter, quarter-zip) med kode-formede filnavn, og et
-        # uforankret søk i hele HTML-en plukket dem systematisk opp så snart
-        # de forankrede kildene bommet (27. juli, probe_bull_code_source).
-        # Samme klasse feil som fraktbanneret: aldri første regex-treff i rå
-        # HTML uten å vite hvilken blokk man står i.
-        head = html[:rm.start()] if (rm := RELATED_RE.search(html)) else html
-        if cm := CODE_RE.search(head):
-            code = cm.group(1).upper()
+    # MERK (28. juli): her lå tidligere en «siste utvei»-gren som tok første
+    # kode-treff i html[:«Relaterte produkter»]. Den er FJERNET, ikke
+    # innsnevret — hodet av dokumentet inneholder fargevelgeren, altså
+    # SØSKEN-fargeveienes koder, og «første treff» der er systematisk feil
+    # farge. Målt av probe_bull_saucony_sweep/-_code_collision: 12 Saucony-
+    # grupper delte én kode på tvers av fargeveier (Endorphin Speed 5 dame:
+    # 5 URL-er på S11007-144, hvis egen kode lå i hodet sammen med
+    # S11007-172/-402/-343; Kinvara 16 herre: 3 URL-er på S21020-172).
+    # get_or_create_variant nøkler på kode FØRST, så de kollapset til én
+    # variant, og upsert_offer droppet resten som «dyrere duplikat» (>= , så
+    # like priser også) — 23 av 133 Saucony-URL-er forsvant stille fra hver
+    # last, uten at discovery eller parseren feilet.
+    #
+    # Grunnen til at de forankrede kildene bommer er Bulls egne filnavn:
+    # «…-s21023-505.jpg» treffer, men «…-s11007-95.jpg» (2 sifre etter
+    # bindestrek) og «…-21020-200.jpg» (uten bokstavprefiks) gjør det ikke.
+    # Å utvide CODE_IMG_RE for å fange dem ville åpnet for nøyaktig de falske
+    # treffene mønsteret er stramt for å unngå. Uten kode faller store_sku
+    # tilbake på JSON-LD-GTIN-en, som ER distinkt per fargevei (verifisert:
+    # 195021608363 / 195021609261 på to Endorphin Speed 5-farger), og
+    # loaderen nøkler da på (butikk, SKU) i stedet. Vi mister kun
+    # kryss-butikk-sammenslåingen for disse fargeveiene — langt billigere enn
+    # å slå sammen to FORSKJELLIGE sko fordi den ene lånte den andres kode.
+    #
+    # Tredje gang samme feilklasse: fraktbanneret (pris), tilbehørs-
+    # karusellen (kode), fargevelgeren (kode). Aldri første regex-treff i rå
+    # HTML uten å vite hvilken blokk man står i.
 
     color = None
     fm = FARGE_RE.search(html)
