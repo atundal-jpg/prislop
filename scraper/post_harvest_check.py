@@ -22,6 +22,11 @@ Logger også en oppsummering av «godt kjøp»-flaggene (deal_gap, migrasjon
 ADVARER også (27. juli, uten å feile) om to butikk-nivå-signaturer:
 rad-multiplisering (warn_row_multiplication) og butikker som stille har
 sluttet å levere (warn_silent_stores).
+ADVARER også (28. juli, uten å feile) om DEKNINGSFALL: en butikk hvis
+distinkte URL-er i denne kjøringen ligger mer enn
+COVERAGE_DROP_WARN_THRESHOLD under butikkens rullerende maks siste 7 døgn
+(warn_coverage_drop, krever migrasjon 0029). Fanger delvis amputerte
+merkehøster som verken er «stille butikk» eller rad-multiplisering.
 Feiler steget, stoppes også utsending av prisvarsler og dødmannspinget
 uteblir, slik at healthchecks.io varsler.
 """
@@ -84,6 +89,35 @@ DUP_MIN_OFFERS = int(os.environ.get("DUP_MIN_OFFERS") or "20")
 # records kaller aldri load(). 24 t = fire kjøringer, så en enkelt forbigående
 # fetch-feil ikke gir støy.
 STALE_STORE_HOURS = int(os.environ.get("STALE_STORE_HOURS") or "24")
+# DEKNINGSFALL (Bull 28. juli): en butikk kan miste URL-er stille, noen få om
+# gangen, uten at NOEN eksisterende vakt reagerer — rad-multipliseringsvakten
+# ser på (url, store_sku)-duplikater, den stille-butikk-vakten krever null
+# ferske tilbud, og re-split-vakten måler produkttall på tvers av alle butikker
+# (Bulls 19 tapte URL-er drukner i ~870 produkter). Bull falt fra 667 til 648
+# distinkte URL-er over fem uker, ~3 % per uke.
+#
+# Målt mot ekte data 28. juli — siste lasts distinkte URL-er mot unionen av
+# URL-er sett siste 7 døgn, som er et ØVRE anslag på hvor mye en frisk butikk
+# svinger fra kjøring til kjøring (unionen er per definisjon >= enhver enkelt
+# kjøring):
+#   Oslo Sportslager 4,2 %  Foss 3,4 %  Bull 2,6 %  Olympia 2,5 %
+#   Torshov 1,8 %  XXL 1,4 %  Intersport 1,4 %  Brukås 0,8 %
+#   Sport 1 0,6 %  Löplabbet 0,3 %
+# Høyeste ekte støy er altså 4,2 % (Oslo Sportslager, normal sortimentsrullering
+# — ikke en feil). Terskelen på 10 % ligger ~2,4x over den målingen og godt
+# under et 20 %-fall, som er størrelsen på en amputert merkehøst. Bulls eget
+# fall på 2,6 % fyrer derfor IKKE på én kjøring: vakten er mot amputasjon i én
+# kjøring, ikke mot langsom, ekte sortimentsrullering.
+#
+# ADVARSEL, aldri rød kjøring — samme linje som de andre butikk-vaktene: en
+# butikk kan helt lovlig rydde katalogen sin, og en hard feiling ville blokkert
+# alle dataoppdateringer for det.
+COVERAGE_DROP_WARN_THRESHOLD = float(
+    os.environ.get("COVERAGE_DROP_WARN_THRESHOLD") or "0.10")
+# Under dette URL-tallet er prosenten for grov (Olympia har 79 URL-er — der er
+# 8 tapte URL-er 10 %, og enkelt-URL-svingninger er vanlige).
+COVERAGE_MIN_URLS = int(os.environ.get("COVERAGE_MIN_URLS") or "50")
+COVERAGE_WINDOW_DAYS = int(os.environ.get("COVERAGE_WINDOW_DAYS") or "7")
 
 
 def check_price_concentration(cur) -> bool:
@@ -300,6 +334,132 @@ def warn_silent_stores(cur) -> None:
         )
 
 
+def _has_store_coverage(cur) -> bool:
+    cur.execute(
+        "select 1 from information_schema.tables where table_schema = 'prislop'"
+        " and table_name = 'store_coverage'"
+    )
+    return cur.fetchone() is not None
+
+
+def _coverage_now(cur) -> list[tuple]:
+    """(store_id, navn, distinkte URL-er, tilbud) for hver aktive butikks SISTE
+    last.
+
+    Forankres på butikkens EGEN max(last_seen_at) + 2 timer bakover, ikke på
+    now() - FRESH_HOURS: butikkene høstes parallelt i samme kjøring, men
+    12-timersvinduet ville dratt inn FORRIGE kjøring også, og unionen av to
+    kjøringer skjuler nettopp det denne vakten skal se. Butikker uten ferske
+    tilbud i det hele tatt hoppes over her — de er warn_silent_stores' bord.
+    """
+    cur.execute(
+        """
+        with per_store as (
+            select o.store_id, max(o.last_seen_at) as t_max
+            from prislop.offers o
+            join prislop.stores s on s.id = o.store_id
+            where s.active
+            group by o.store_id
+        )
+        select p.store_id, s.name,
+               count(distinct o.url) as urls,
+               count(*) as offers
+        from per_store p
+        join prislop.stores s on s.id = p.store_id
+        join prislop.offers o
+             on o.store_id = p.store_id
+            and o.last_seen_at > p.t_max - interval '2 hours'
+        where p.t_max > now() - make_interval(hours => %s)
+        group by p.store_id, s.name
+        order by s.name
+        """,
+        (FRESH_HOURS,),
+    )
+    return cur.fetchall()
+
+
+def warn_coverage_drop(cur) -> None:
+    """Kun ADVARSEL (se COVERAGE_DROP_WARN_THRESHOLD). Flagger butikker der
+    denne kjøringens distinkte URL-er ligger mer enn terskelen under butikkens
+    rullerende maks siste COVERAGE_WINDOW_DAYS døgn.
+
+    Signaturen dette fanger: en butikks katalog blir delvis amputert i én
+    kjøring — et merke som faller ut av discovery, en paginering som stopper
+    for tidlig, eller et API som svarer tomt for en del av settet. Ingen av de
+    andre vaktene ser det: butikken leverer jo tilbud (ikke stille), radene er
+    skillbare (ingen multiplisering), og produkttallet på tvers av 10 butikker
+    rikker seg knapt.
+
+    Skriver ALLTID kjøringens tall til prislop.store_coverage til slutt —
+    tabellen er selve historikken, siden prislop.offers bare har SISTE
+    last_seen_at per rad og derfor ikke kan rekonstruere tidligere kjøringer.
+    """
+    if not _has_store_coverage(cur):
+        print(
+            "MERK: prislop.store_coverage mangler — kjør migrasjon "
+            "0029_store_coverage.sql. Dekningsvakten er inaktiv til da."
+        )
+        return
+
+    now = _coverage_now(cur)
+    if not now:
+        print("Dekning: ingen butikker med ferske tilbud å måle på.")
+        return
+
+    cur.execute(
+        """
+        select store_id, max(url_count) as peak, count(*) as runs
+        from prislop.store_coverage
+        where run_at > now() - make_interval(days => %s)
+        group by store_id
+        """,
+        (COVERAGE_WINDOW_DAYS,),
+    )
+    peaks = {sid: (peak, runs) for sid, peak, runs in cur.fetchall()}
+
+    flagged = 0
+    for store_id, name, urls, offers in now:
+        peak, runs = peaks.get(store_id, (None, 0))
+        if not peak or urls >= peak:
+            continue
+        drop = (peak - urls) / peak
+        if urls < COVERAGE_MIN_URLS and peak < COVERAGE_MIN_URLS:
+            continue
+        if drop >= COVERAGE_DROP_WARN_THRESHOLD:
+            flagged += 1
+            print(
+                f"ADVARSEL: {name}: {urls} distinkte URL-er i denne kjøringen "
+                f"— {drop:.0%} under maks {peak} siste "
+                f"{COVERAGE_WINDOW_DAYS} døgn ({runs} kjøringer). Sjekk om et "
+                "merke har falt ut av discovery, om pagineringen stopper for "
+                "tidlig, eller om butikken faktisk har ryddet katalogen.",
+                file=sys.stderr,
+            )
+
+    measured = ", ".join(
+        f"{name} {urls}"
+        + (f"/{peaks[sid][0]}" if peaks.get(sid) and peaks[sid][0] else "")
+        for sid, name, urls, _ in now
+    )
+    print(
+        f"Dekning (URL-er denne kjøringen / maks siste {COVERAGE_WINDOW_DAYS} "
+        f"døgn): {measured}."
+    )
+    if not flagged:
+        print(
+            f"Dekning: ingen butikk mer enn {COVERAGE_DROP_WARN_THRESHOLD:.0%} "
+            "under sin egen maks."
+        )
+
+    # Skriv kjøringens dekning til slutt, slik at sammenligningen over aldri
+    # måler mot seg selv.
+    cur.executemany(
+        "insert into prislop.store_coverage (store_id, url_count, offer_count)"
+        " values (%s, %s, %s)",
+        [(sid, urls, offers) for sid, _, urls, offers in now],
+    )
+
+
 def check_oslosportslager_brand_scope(cur) -> bool:
     """True hvis OK. Flagger merker der Oslo Sportslager er ENESTE butikk med
     tilbud — signaturen på at ALLOWED_BRANDS i oslosportslager_parser.py har
@@ -395,6 +555,7 @@ def main() -> int:
     warn_deal_concentration(cur)
     warn_row_multiplication(cur)
     warn_silent_stores(cur)
+    warn_coverage_drop(cur)
 
     if prev is None:
         print("Ingen tidligere kjøring i run_stats — registrert som baseline.")

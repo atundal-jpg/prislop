@@ -343,6 +343,58 @@ def main():
         else:
             verdict["annet"] += 1
 
+    # --- 4b) KODE-KOLLISJON: emitter parseren samme kode for flere farger? -
+    # Avgjørende test. get_or_create_variant nøkler PÅ manufacturer_code
+    # først, og upsert_offer dropper enhver record som treffer samme
+    # (butikk, variant) senere i samme kjøring («dyrere duplikat»). Emitter
+    # parseren én felles kode for alle fargeveiene av en modell, kollapser de
+    # derfor til ÉN variant, og alle URL-ene unntatt den billigste forsvinner
+    # fra lasten — uten at discovery har mistet noe som helst.
+    print("=" * 78)
+    print("4b) KODE-KOLLISJON — parser hver savnet URL + den overlevende")
+    groups: dict[tuple[str, str], list[str]] = {}
+    for path, survivor in MISSING:
+        key = path.rsplit("/", 1)[-1]
+        key = key.rstrip("-0123456789") or key
+        groups.setdefault((path.rsplit("/", 1)[0], key), []).append(path)
+        if survivor and survivor not in groups[(path.rsplit("/", 1)[0], key)]:
+            groups[(path.rsplit("/", 1)[0], key)].append(survivor)
+
+    collision = False
+    for (_, key), paths in sorted(groups.items()):
+        print(f"\n  --- {key} ({len(paths)} URL-er) ---")
+        by_code: dict[str, list[str]] = {}
+        for path in sorted(set(paths)):
+            url = BASE + path
+            status, _, body = head_no_redirect(url)
+            if status != 200 or not body:
+                print(f"    {path.rsplit('/', 1)[-1]:<34} status={status}")
+                continue
+            try:
+                rec = bull_parser.parse(body, url)
+            except Exception as e:
+                print(f"    {path.rsplit('/', 1)[-1]:<34} parse-feil: {e}")
+                continue
+            if rec is None:
+                print(f"    {path.rsplit('/', 1)[-1]:<34} parse() -> None")
+                continue
+            code = rec.get("manufacturer_code")
+            sku = rec.get("store_sku")
+            n = len(rec["sizes"])
+            print(f"    {path.rsplit('/', 1)[-1]:<34} kode={str(code):<16} "
+                  f"sku={str(sku):<16} farge={str(rec.get('color')):<18} "
+                  f"pris={rec['price']} str={n}")
+            by_code.setdefault(str(code), []).append(path.rsplit("/", 1)[-1])
+        for code, urls in by_code.items():
+            if code != "None" and len(urls) > 1:
+                collision = True
+                print(f"    ✗ KOLLISJON: kode {code} deles av {len(urls)} "
+                      f"URL-er: {urls}")
+                print("      → alle unntatt én kollapser til samme variant og "
+                      "droppes av upsert_offer")
+    if not collision:
+        print("\n  ✓ ingen to URL-er delte samme manufacturer_code")
+
     # --- 5) discovery.discover ende-til-ende ------------------------------
     print("=" * 78)
     print("5) discovery.discover() ENDE-TIL-ENDE (som pipelinen kaller den)")
