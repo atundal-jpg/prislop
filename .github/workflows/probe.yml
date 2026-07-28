@@ -31,6 +31,7 @@ on:
           - probe_bull_code_source.py
           - probe_bull_discovery_drift.py
           - probe_bull_saucony_sweep.py
+          - probe_bull_code_collision.py
           - probe_xxl_price.py
           - probe_xxl_facets.py
           - probe_xxl_esales.py
