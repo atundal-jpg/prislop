@@ -116,8 +116,9 @@ def main():
             for s in slugs:
                 print(f"       {s}")
     if none_code:
-        print(f"\n  UTEN KODE ({len(none_code)}) — nøkles på (butikk, url) "
-              "i loaderen:")
+        print(f"\n  UTEN KODE ({len(none_code)}) — nøkles på (butikk, SKU) i "
+              "loaderen, der SKU er JSON-LD-GTIN-en (distinkt per fargevei); "
+              "(butikk, url) er backstoppen under den:")
         for s in none_code[:20]:
             print(f"    {s}")
 
