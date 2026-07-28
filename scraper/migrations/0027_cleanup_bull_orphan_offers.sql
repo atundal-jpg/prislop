@@ -41,6 +41,7 @@
 --     and o.id not in (select id from newest);
 --
 --   -> 5 931 tilbud   (av 6 597 Bull-rader; 666 blir stående)
+--      Etter harvesten 12:53 27. juli: 5 937 tilbud av 6 609 rader.
 --      5 929 price_history-rader   (av 18 065 totalt = 33 %)
 --     69 468 offer_sizes-rader
 --          0 alert_events-rader berørt
@@ -53,33 +54,46 @@
 begin;
 
 -- VAKT 1+2: er fiksen faktisk i drift?
+-- «Siste harvest» = radene med butikkens NYESTE last_seen_at. loader.load()
+-- kjører i én transaksjon per butikk, så now() er konstant og alle rader den
+-- kjøringen rørte får nøyaktig samme tidsstempel. Et tidsVINDU (f.eks. 12 t)
+-- duger IKKE her: rett etter fiksen spenner et slikt vindu over både den nye
+-- og den forrige, buggy kjøringen, og restene derfra (178 rader 27. juli
+-- 13:30) ville avbrutt migrasjonen på gamle data. Vi spør om SISTE kjøring.
 do $$
 declare
     n_fresh int;
     n_fresh_nullsku int;
+    siste timestamptz;
 begin
+    select max(o.last_seen_at) into siste
+      from prislop.offers o
+      join prislop.stores s on s.id = o.store_id
+     where s.slug = 'bull';
+
     select count(*),
            count(*) filter (where o.store_sku is null)
       into n_fresh, n_fresh_nullsku
       from prislop.offers o
       join prislop.stores s on s.id = o.store_id
      where s.slug = 'bull'
-       and o.last_seen_at > now() - interval '12 hours';
+       and o.last_seen_at = siste
+       and siste > now() - interval '12 hours';
 
     if n_fresh = 0 then
-        raise exception 'Ingen ferske Bull-tilbud siste 12 t — harvesten har '
-            'ikke kjørt. Avbryter: opprydding skal skje rett etter en '
+        raise exception 'Bulls siste last er eldre enn 12 t — harvesten har '
+            'ikke kjørt nylig. Avbryter: opprydding skal skje rett etter en '
             'vellykket harvest med den nye parseren, ikke på gammel tilstand.';
     end if;
 
     if n_fresh_nullsku > 10 then
-        raise exception 'Akseptansetest 1 er ikke grønn: % av % ferske '
-            'Bull-tilbud står fortsatt uten store_sku. Parser-/loader-fiksen '
+        raise exception 'Akseptansetest 1 er ikke grønn: % av % Bull-tilbud i '
+            'SISTE harvest står uten store_sku. Parser-/loader-fiksen '
             'har ikke kjørt en harvest ennå — radene ville blitt regenerert '
             'med en gang. Avbryter.', n_fresh_nullsku, n_fresh;
     end if;
 
-    raise notice 'Ferske Bull-tilbud: % (uten store_sku: %)', n_fresh, n_fresh_nullsku;
+    raise notice 'Bull i siste harvest: % tilbud (uten store_sku: %)', n_fresh, n_fresh_nullsku;
 end $$;
 
 -- Kandidatene, plukket ut én gang så sletting og rapport ser samme sett.
