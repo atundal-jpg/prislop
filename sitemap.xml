@@ -26,7 +26,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=demping</loc>
-    <lastmod>2026-07-29</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -534,7 +534,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=12189362-8da8-4beb-a998-9ba3f0718cb1</loc>
-    <lastmod>2026-07-27</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1152,7 +1152,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=26fe0ade-7f10-455c-a673-b65afaa34e8d</loc>
-    <lastmod>2026-07-27</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -2394,7 +2394,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=512f7df6-e00b-4245-8bd7-bbc3b233a283</loc>
-    <lastmod>2026-07-27</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3055,12 +3055,6 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=6e2b7e11-1fc1-430f-af55-ec75c2723279</loc>
     <lastmod>2026-07-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://xn--prislp-fya.no/?product=6ebbc3d4-d3ad-45ff-b952-67011b70abf4</loc>
-    <lastmod>2026-07-15</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5555,6 +5549,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://xn--prislp-fya.no/?product=cbcc5812-cfd4-4b3b-9224-64756e8eff2d</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://xn--prislp-fya.no/?product=cc3a0fbf-0bb5-4eff-b3a8-b8be776644a7</loc>
     <lastmod>2026-07-15</lastmod>
     <changefreq>daily</changefreq>
@@ -6438,7 +6438,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=f1f03dc5-80b3-416b-9734-4df151976646</loc>
-    <lastmod>2026-07-27</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
