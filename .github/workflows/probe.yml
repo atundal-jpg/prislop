@@ -39,16 +39,26 @@ on:
           - probe_xxl_nextdata_price.py
           - probe_xxl_group_dump.py
           - probe_discover_counts.py
+      args:
+        description: "Valgfrie argumenter til scriptet (f.eks. merke: hoka)"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Kjør probe (${{ inputs.script }})
+      # Script og args går via env, ikke via ${{ }} rett i run: — ellers
+      # interpoleres brukerstyrt input inn i shell-linja før den kjøres.
+      - name: Kjør probe (${{ inputs.script }} ${{ inputs.args }})
         working-directory: scraper
-        run: python "${{ inputs.script }}"
+        env:
+          PROBE_SCRIPT: ${{ inputs.script }}
+          PROBE_ARGS: ${{ inputs.args }}
+        run: python "$PROBE_SCRIPT" $PROBE_ARGS
