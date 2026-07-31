@@ -25,16 +25,27 @@
 -- samme kjøring. Ingen nye rader, ingen brutt prishistorikk.
 --
 -- AVGRENSNING
--- 1) store_sku nulles kun for Bull-tilbud på Saucony-produkter der store_sku
---    er kode-formet (ikke GTIN). Andre merker hos Bull henter koden fra
---    forankrede kilder (og:image / «Produktnummer» / «Art#») og får samme
---    verdi som før — de trenger ingen overgang. Nullingen er uansett rent
---    transitorisk: upsert_offer skriver store_sku på nytt hver kjøring.
+-- 1) store_sku nulles for ALLE Bull-tilbud der store_sku er kode-formet (ikke
+--    GTIN) — ikke bare Saucony. Sweepen viste at Hoka har samme overgang for
+--    5 URL-er (Clifton 9 Gore-Tex, Mach X 2), og Asics/adidas/Kiprun er ikke
+--    målt like grundig. Nullingen er rent transitorisk og trygg uansett
+--    merke: URL-fallbacken adopterer raden, og upsert_offer skriver fersk sku
+--    inn i samme kjøring, så en rad som IKKE mister koden ender med nøyaktig
+--    samme verdi som før. Bull har én fargevei per URL, så URL-nøkling kan
+--    ikke slå sammen distinkte farger her (til forskjell fra Oslo
+--    Sportslager, som har ~2 per URL — den butikken røres ikke).
 -- 2) manufacturer_code nulles kun på varianter som BARE Bull har tilbud på,
---    og bare for de bevist kolliderte kodene. S11023-121 er bevisst utelatt:
---    den varianten deles med Olympia, og en nulling der ville revet ned en
---    ekte kryss-butikk-sammenslåing. Riktig kode læres uansett tilbake neste
---    kjøring — get_or_create_variant arver koden når varianten mangler den.
+--    og bare for de bevist kolliderte kodene (12 Saucony + 2 Hoka).
+--    S11023-121 er bevisst utelatt: den varianten deles med Olympia, og en
+--    nulling der ville revet ned en ekte kryss-butikk-sammenslåing. Riktig
+--    kode læres uansett tilbake neste kjøring — get_or_create_variant arver
+--    koden når varianten mangler den.
+--
+-- IKKE LØST AV DENNE ELLER PARSER-FIKSEN
+-- hoka-clifton-9-gore-tex-dame og -dame-0 har SAMME og:image, og dermed samme
+-- forankrede kode (1141490-BBLC). Det er en feil i Bulls egne data som ingen
+-- forankret kilde kan skille. 1 URL forblir tapt; ikke verdt en uforankret
+-- gjetning å hente tilbake.
 --
 -- Ingen view-endringer (regel 5). Kjør FØR første harvest etter at PR #28 er
 -- merget, ellers skriver den gamle parseren kodene inn igjen.
@@ -51,7 +62,6 @@ update prislop.offers o
    and s.slug = 'bull'
    and v.id = o.variant_id
    and p.id = v.product_id
-   and p.brand = 'Saucony'
    and o.store_sku is not null
    and o.store_sku !~ '^[0-9]{8,14}$';       -- behold ekte GTIN-er
 
@@ -61,7 +71,8 @@ update prislop.variants v
  where v.manufacturer_code in (
          'S30994-285','S11007-144','S21007-402','S10996-130','S20996-100',
          'S11026-226','S21026-201','S11020-130','S21020-172','S10990-150',
-         'S20990-161')                       -- S11023-121 utelatt: delt med Olympia
+         'S20990-161',                       -- S11023-121 utelatt: delt med Olympia
+         '1141490-BBLC','1141470-BBLC')      -- Hoka Clifton 9 Gore-Tex
    and not exists (
          select 1
            from prislop.offers o
