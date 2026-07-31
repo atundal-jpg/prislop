@@ -64,6 +64,7 @@ def main():
     print("=" * 78)
 
     by_code: dict[str, list[str]] = defaultdict(list)
+    legacy_keys: dict[str, list[str]] = {}
     parsed, failed, none_code = 0, 0, []
     for i, url in enumerate(urls, 1):
         html = get_html(url)
@@ -83,6 +84,20 @@ def main():
         parsed += 1
         code = rec.get("manufacturer_code")
         slug = url.rsplit("/", 1)[-1]
+
+        # A/B: hva ville den GAMLE kjeden (med fri-tekst-grenen) gitt på
+        # nøyaktig samme markup? Lar oss måle hva bug-en koster i dag, ikke
+        # bare hva den kostet 28. juli — Bulls katalog endrer seg under oss.
+        legacy = code
+        if not legacy:
+            rm = bull_parser.RELATED_RE.search(html)
+            head = html[:rm.start()] if rm else html
+            if cm := bull_parser.CODE_RE.search(head):
+                legacy = cm.group(1).upper()
+        lkey = (f"{rec.get('model')}|{rec.get('gender')}|{legacy}"
+                if legacy else f"URL|{slug}")
+        legacy_keys.setdefault(lkey, []).append(slug)
+
         if code:
             # Variantnøkkelen i loaderen er (produkt, kode). Produktet er
             # (merke, modell, kjønn) — ta det med, ellers ser vi kollisjoner
@@ -121,6 +136,20 @@ def main():
               "(butikk, url) er backstoppen under den:")
         for s in none_code[:20]:
             print(f"    {s}")
+
+    legacy_coll = {k: v for k, v in legacy_keys.items() if len(v) > 1}
+    legacy_lost = sum(len(v) - 1 for v in legacy_coll.values())
+    print("\n" + "=" * 78)
+    print("A/B PÅ SAMME MARKUP — hva koster bug-en i dag?")
+    print(f"  GAMMEL kjede (med fri-tekst):  {len(legacy_keys)} nøkler, "
+          f"{len(legacy_coll)} kollisjoner, {legacy_lost} URL-er tapt")
+    print(f"  NY kjede (uten fri-tekst):     "
+          f"{len(by_code) + len(none_code)} nøkler, {len(collisions)} "
+          f"kollisjoner, {lost} URL-er tapt")
+    if legacy_coll:
+        print("  Gamle kollisjoner som fiksen fjerner:")
+        for k, v in sorted(legacy_coll.items()):
+            print(f"    {k}: {len(v)} URL-er -> {v}")
 
     print("\n" + "=" * 78)
     print("TOLKNING")
