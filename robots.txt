@@ -1,9 +1,19 @@
 User-agent: *
 Allow: /
-# Googlebot plukker opp Supabase-API-stier fra JS-en og feiltolker dem som
-# 404-sider (GSC-gjennomgang 14. juli) — de finnes ikke på dette domenet.
-Disallow: /rest/
-Disallow: /functions/
-Disallow: /auth/
+
+# Historikk — les før du legger tilbake Disallow-linjer her:
+#
+# 14. juli: /rest/, /functions/ og /auth/ ble satt til Disallow fordi
+# Googlebot plukker Supabase-API-stier ut av JS-en i index.html og prøver dem
+# mot DETTE domenet. Stiene finnes ikke her — alle API-kall går absolutt til
+# agmhjcskkjtnwmhzzckx.supabase.co (SB_URL), så treffene ble 404-er i GSC.
+#
+# 8. august: fjernet igjen. Blokkeringen byttet bare «Ikke funnet (404)» mot
+# «Blokkert av robots.txt» (GSC-varsel samme dag) — like mye støy, men verre
+# type: 404-er faller ut av rapporten av seg selv når Google gir opp URL-en,
+# mens robots-blokkerte URL-er blir liggende på ubestemt tid fordi Google
+# aldri får bekreftet at de er borte. Ingen av delene påvirker rangering.
+# 404 er dessuten det ærlige svaret: sidene finnes faktisk ikke, og repoet
+# har ingen 404.html/SPA-fallback, så GitHub Pages gir ekte 404-status.
 
 Sitemap: https://xn--prislp-fya.no/sitemap.xml
