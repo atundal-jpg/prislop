@@ -274,6 +274,13 @@
   /* states */
   .state{border:1px dashed var(--line);border-radius:16px;padding:40px 24px;text-align:center;color:var(--muted);background:#fff}
   .more-row{display:flex;justify-content:center;padding:26px 0 6px}
+  /* gjennomsøkbar modell-indeks nederst på kategorisidene */
+  .allmodels{margin-top:34px;padding-top:26px;border-top:1px solid var(--line)}
+  .allmodels h2{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+  .allmodels-links{display:flex;flex-wrap:wrap;gap:8px}
+  .allmodels-links a{font-size:13.5px;color:var(--petrol);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 12px;background:#fff}
+  .allmodels-links a:hover{border-color:var(--petrol)}
+  .allmodels-links a:focus-visible{outline:2.5px solid var(--petrol);outline-offset:2px}
   .state h3{font-family:var(--disp);font-size:19px;color:var(--ink);margin-bottom:6px}
   .state .btn{margin-top:16px}
   .skel{height:104px;border:1px solid var(--line);border-radius:18px;background:
@@ -1384,7 +1391,39 @@ function render(){
     + (list.length > shown.length
       ? '<div class="more-row"><button class="btn" onclick="showMore()">Vis flere modeller ('
         + (list.length - shown.length) + ' igjen)</button></div>'
-      : "");
+      : "")
+    + katIndexHTML(list);
+}
+
+/* Gjennomsøkbar indeks over ALLE modeller i kategorien (GSC 8. august).
+   Kortlista viser 18 om gangen bak en «Vis flere»-knapp, og den klikker
+   ikke Googlebot — så uten denne ville bare de 18 øverste produkt-URL-ene
+   hatt en intern lenke. Her får hver modell i kategorien en ekte <a href>
+   fra en side Google allerede indekserer, uten å måtte rendre 150 kort.
+   Lista er synlig for brukere: lenker som bare finnes for crawleren er
+   cloaking, og en kompakt modelloversikt er nyttig i seg selv. */
+function katIndexHTML(list){
+  if(!filters.kat || !KAT_LABELS[filters.kat] || !list.length) return "";
+  const links = list.map(p =>
+      '<a href="' + relProductUrl(p.product_id) + '"'
+      + ' onclick="return openFromIndex(event,\'' + p.product_id + '\')">'
+      + esc(p.brand) + ' ' + esc(p.model) + '</a>').join("");
+  return '<nav class="allmodels" aria-label="Alle modeller i kategorien">'
+    + '<h2>Alle modeller i ' + esc(KAT_LABELS[filters.kat]) + '</h2>'
+    + '<div class="allmodels-links">' + links + '</div></nav>';
+}
+/* Klikk i indeksen: åpne kortet på stedet i stedet for full sidelast.
+   Lenken er ekte, så uten JS (og for Googlebot) peker den fortsatt på
+   produkt-URL-en — dette er bare snarveien for brukere som har JS. */
+function openFromIndex(ev, pid){
+  if(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return true;
+  ev.preventDefault();
+  if(!PRODUCT_BY_ID[pid]) return false;
+  pinnedPid = pid;
+  render();
+  const card = document.querySelector('.product[data-pid="' + pid + '"]');
+  if(card) openCard(card, { push:true, scroll:true });
+  return false;
 }
 
 function cardHTML(p){
@@ -1404,7 +1443,12 @@ function cardHTML(p){
                .filter(Boolean).join(" · ");
   return ''
   + '<article class="product" data-pid="'+p.product_id+'">'
-  +   '<button class="p-head" aria-expanded="false" onclick="toggle(this)">'
+  // Korthodet er en EKTE lenke, ikke en knapp (GSC 8. august): uten <a href>
+  // til produkt-URL-ene hadde Google null intern vei til dem, kjente dem bare
+  // fra sitemapet, og 676 lå som «Oppdaget – ikke indeksert». JS-en avbryter
+  // navigasjonen og beholder trekkspillet; modifikatorklikk slipper gjennom
+  // til nettleseren, så «åpne i ny fane» virker som på en vanlig lenke.
+  +   '<a class="p-head" href="'+relProductUrl(p.product_id)+'" aria-expanded="false" onclick="toggle(this,event)">'
   +     '<div class="p-top">'
   +       '<div class="shoe">'+SHOE_SVG+'</div>'
   +       '<div class="p-id"><div class="brand">'+esc(p.brand)+'</div>'
@@ -1413,14 +1457,22 @@ function cardHTML(p){
   +          '<div class="val">'+(p.from_price!=null ? nok(p.from_price) : '–')+'&nbsp;<span>kr</span></div></div>'
   +       '<div class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'
   +     '</div>'
-  +   '</button>'
+  +   '</a>'
   +   '<div class="p-body" id="body-'+p.product_id+'"></div>'
   + '</article>';
 }
 function plur(n,one,many){ n=Number(n)||0; return n+" "+(n===1?one:many); }
 
-async function toggle(btn){
-  const card = btn.closest(".product");
+async function toggle(node, ev){
+  if(ev){
+    // cmd/ctrl/shift/alt-klikk: la nettleseren gjøre jobben (ny fane/vindu).
+    // Midtklikk gir auxclick, ikke click, så det slipper gjennom av seg selv.
+    if(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    // preventDefault må skje FØR første await — en async funksjon kjører
+    // synkront fram dit, så dette rekker å avbryte navigasjonen.
+    ev.preventDefault();
+  }
+  const card = node.closest(".product");
   if(card.classList.contains("open")){
     closeCard(card);
     // lukk → tilbake til lista vi kom fra (prisfall/gode kjøp/kategori/forside)
@@ -1796,7 +1848,7 @@ function resetFilters(){
 }
 window.toggle=toggle; window.pickSize=pickSize; window.openAlert=openAlert;
 window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=init;
-window.showMore=showMore;
+window.showMore=showMore; window.openFromIndex=openFromIndex;
 
 window.addEventListener("popstate", syncFromLocation);   // nettleser fram/tilbake
 applyEarlyRouteMeta();   // canonical/OG fra URL-en før første fetch — se kommentar over
