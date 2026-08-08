@@ -1030,6 +1030,52 @@ function applyDealMeta(){
   injectDealJsonLd();
   renderDealIntro();
 }
+/* ---- Canonical FØR data (GSC-varsel 8. august) ----
+   Googlebot rendrer JS-en, men rute-canonical ble tidligere først satt etter
+   at fetchProducts OG loadBody var ferdige — fire sekvensielle kryss-origin-
+   hentinger mot Supabase. Fullførte de ikke innenfor render-budsjettet, ble
+   rå-HTML-ens canonical («/») stående, og Google klassifiserte hver
+   ?product=- og ?kategori=-URL i sitemapet som «Alternativ side med gyldig
+   kanonisk tag» — altså som duplikat av forsiden, og dermed uindeksert.
+   Denne kjører synkront ved sidelast, før første fetch, og setter canonical
+   + og:url fra URL-en alene. Tittel/beskrivelse for produkt fylles fortsatt
+   av applyProductMeta når dataene er inne; kategori/prisfall/gode-kjøp har
+   statisk tekst og kan settes med én gang. */
+function applyStaticRouteMeta(url, title, desc){
+  setAttr('link[rel="canonical"]', "href", url);
+  setAttr('meta[property="og:url"]', "content", url);
+  document.title = title;
+  setAttr('meta[name="description"]',         "content", desc);
+  setAttr('meta[property="og:title"]',        "content", title);
+  setAttr('meta[property="og:description"]',  "content", desc);
+  setAttr('meta[name="twitter:title"]',       "content", title);
+  setAttr('meta[name="twitter:description"]', "content", desc);
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function applyEarlyRouteMeta(){
+  const params = new URLSearchParams(location.search);
+  const pid = params.get("product");
+  if(pid){
+    // kun velformede id-er: en søppel-parameter skal ikke få selv-canonical
+    if(UUID_RE.test(pid)){
+      setAttr('link[rel="canonical"]', "href", productUrl(pid));
+      setAttr('meta[property="og:url"]', "content", productUrl(pid));
+    }
+    return;
+  }
+  const slug = params.get("kategori");
+  if(slug && KAT_CONTENT[slug]){
+    applyStaticRouteMeta(kategoriUrl(slug), KAT_CONTENT[slug].title, KAT_CONTENT[slug].desc);
+    return;
+  }
+  if(params.has("prisfall")){
+    applyStaticRouteMeta(PRISFALL_URL, PRISFALL_CONTENT.title, PRISFALL_CONTENT.desc);
+    return;
+  }
+  if(params.has("gode-kjop")){
+    applyStaticRouteMeta(DEAL_URL, DEAL_CONTENT.title, DEAL_CONTENT.desc);
+  }
+}
 /* Synlig intro + AEO-svar over kortlista — må matche det som ligger i JSON-LD,
    siden Google/AI-søk forventer at FAQ-innhold faktisk vises på siden. */
 function renderKatIntro(slug){
@@ -1157,8 +1203,13 @@ async function init(){
   applyPrisfallFromUrl();
   applyDealFromUrl();
   render();
-  if(new URLSearchParams(location.search).get("product")){
+  const urlPid = new URLSearchParams(location.search).get("product");
+  if(urlPid){
     openFromUrl();
+    // ukjent/sammenslått id: openFromUrl blir stående på lista, og da skal
+    // canonical tilbake til forsiden — ikke bli hengende på produkt-URL-en
+    // applyEarlyRouteMeta satte før dataene var inne.
+    if(!PRODUCT_BY_ID[urlPid]) applyHomeMeta();
   }else if(filters.prisfall){
     applyPrisfallMeta();
   }else if(filters.deal){
@@ -1748,6 +1799,7 @@ window.submitAlert=submitAlert; window.resetFilters=resetFilters; window.init=in
 window.showMore=showMore;
 
 window.addEventListener("popstate", syncFromLocation);   // nettleser fram/tilbake
+applyEarlyRouteMeta();   // canonical/OG fra URL-en før første fetch — se kommentar over
 init();
 </script>
 </body>
