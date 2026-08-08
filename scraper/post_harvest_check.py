@@ -96,26 +96,39 @@ STALE_STORE_HOURS = int(os.environ.get("STALE_STORE_HOURS") or "24")
 # (Bulls 19 tapte URL-er drukner i ~870 produkter). Bull falt fra 667 til 648
 # distinkte URL-er over fem uker, ~3 % per uke.
 #
-# Målt mot ekte data 28. juli — siste lasts distinkte URL-er mot unionen av
-# URL-er sett siste 7 døgn, som er et ØVRE anslag på hvor mye en frisk butikk
-# svinger fra kjøring til kjøring (unionen er per definisjon >= enhver enkelt
-# kjøring):
-#   Oslo Sportslager 4,2 %  Foss 3,4 %  Bull 2,6 %  Olympia 2,5 %
-#   Torshov 1,8 %  XXL 1,4 %  Intersport 1,4 %  Brukås 0,8 %
-#   Sport 1 0,6 %  Löplabbet 0,3 %
-# Høyeste ekte støy er altså 4,2 % (Oslo Sportslager, normal sortimentsrullering
-# — ikke en feil). Terskelen på 10 % ligger ~2,4x over den målingen og godt
-# under et 20 %-fall, som er størrelsen på en amputert merkehøst. Bulls eget
-# fall på 2,6 % fyrer derfor IKKE på én kjøring: vakten er mot amputasjon i én
-# kjøring, ikke mot langsom, ekte sortimentsrullering.
+# FØRSTE KALIBRERING (28. juli, terskel 10 %) måtte bruke en proxy: siste
+# lasts distinkte URL-er mot UNIONEN av URL-er sett siste 7 døgn. Unionen er
+# per definisjon >= enhver enkelt kjøring, så den overdriver hvor mye en frisk
+# butikk svinger. Den ga Oslo Sportslager 4,2 %, Foss 3,4 %, Bull 2,6 %,
+# Olympia 2,5 % — og 10 % ble satt ~2,4x over det.
+#
+# REKALIBRERT 7. august mot ekte kjøring-til-kjøring-data: 28 kjøringer i
+# prislop.store_coverage (tabellen fantes ikke i juli, derfor proxyen).
+# Kjøringens URL-er mot butikkens rullerende maks siste 7 døgn:
+#   Oslo Sportslager 2,3 %  XXL 1,2 %  Intersport 0,2 %
+#   Bull, Löplabbet, Brukås, Foss, Olympia, Torshov, Sport 1: 0,0 %
+# Det reelle støygulvet er altså 2,3 %, ikke 4,2 %. Med 10 % ville vakten
+# sovet gjennom et fall på 8 % — mer enn tre ganger verre enn noe som er
+# observert på 10 butikker over 28 kjøringer. Terskelen settes derfor til
+# 6 %: ~2,6x over høyeste ekte utslag (samme sikkerhetsmargin som første
+# kalibrering siktet på), men den fanger nå et halvt så stort fall.
+#
+# Vakten er fortsatt mot AMPUTASJON i én kjøring, ikke mot langsom, ekte
+# sortimentsrullering: Bulls opprinnelige lekkasje (~3 % per uke, 23 URL-er
+# per last) fyrer den ikke, og skal ikke gjøre det — den ble funnet ved å
+# holde discovery-output mot lastede URL-er per merke, som er et annet
+# instrument.
 #
 # ADVARSEL, aldri rød kjøring — samme linje som de andre butikk-vaktene: en
 # butikk kan helt lovlig rydde katalogen sin, og en hard feiling ville blokkert
 # alle dataoppdateringer for det.
 COVERAGE_DROP_WARN_THRESHOLD = float(
-    os.environ.get("COVERAGE_DROP_WARN_THRESHOLD") or "0.10")
-# Under dette URL-tallet er prosenten for grov (Olympia har 79 URL-er — der er
-# 8 tapte URL-er 10 %, og enkelt-URL-svingninger er vanlige).
+    os.environ.get("COVERAGE_DROP_WARN_THRESHOLD") or "0.06")
+# Under dette URL-tallet er prosenten for grov (Olympia har 84 URL-er — der
+# holder 5 tapte URL-er til å passere 6 %, og enkelt-URL-svingninger er
+# vanlige). Beholdes på 50 etter rekalibreringen: Olympia og Foss (84/95) er
+# de eneste butikkene i nærheten, og begge har ligget helt flatt i 28
+# kjøringer, så de tåler den strammere terskelen.
 COVERAGE_MIN_URLS = int(os.environ.get("COVERAGE_MIN_URLS") or "50")
 COVERAGE_WINDOW_DAYS = int(os.environ.get("COVERAGE_WINDOW_DAYS") or "7")
 
