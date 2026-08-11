@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://xn--prislp-fya.no/</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
@@ -14,31 +14,31 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=tempo</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=daily</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=demping</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=stabilitet</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=terreng</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -414,7 +414,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=0be8e396-b8fe-48af-abba-8f248362ad3f</loc>
-    <lastmod>2026-07-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -882,7 +882,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=1d929e66-88d3-4e96-a12d-2a62f83c9718</loc>
-    <lastmod>2026-07-18</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1272,7 +1272,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=2938ace5-9b95-4ef7-914e-2df82e940fcc</loc>
-    <lastmod>2026-07-15</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1554,7 +1554,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=316efb23-f5a7-4ebc-8201-4d1b18580798</loc>
-    <lastmod>2026-07-20</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3192,7 +3192,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=71a1fcac-bd31-4978-b182-062ccd069a04</loc>
-    <lastmod>2026-08-06</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3426,7 +3426,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=78685bce-e568-4a77-8d82-bc86f2ea69e6</loc>
-    <lastmod>2026-07-15</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3697,6 +3697,12 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=83f9c09e-985c-4672-8c47-c4705f56cd76</loc>
     <lastmod>2026-07-15</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/?product=83fd9232-c2fe-42ea-9b1e-202654ecdf98</loc>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -4128,7 +4134,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=93219c19-5405-45ec-9466-b62a1bc6d8a2</loc>
-    <lastmod>2026-08-06</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5706,7 +5712,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=d13dd6d7-b9e6-450f-b454-efd4a36848f4</loc>
-    <lastmod>2026-07-10</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6270,7 +6276,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=e84a7bba-08b6-456f-b5c8-89bac427889b</loc>
-    <lastmod>2026-07-18</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
