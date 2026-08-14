@@ -8,7 +8,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=konkurranse</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-14</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -2142,7 +2142,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=47581ab2-1bbc-4586-b2df-ae37a18bb1a7</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-14</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6091,6 +6091,12 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=e15ffafe-e925-45c7-bd42-ea0deb67b73d</loc>
     <lastmod>2026-08-13</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/?product=e18bfa6b-3f3f-4050-b83c-78a35f68b8ae</loc>
+    <lastmod>2026-08-14</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
