@@ -20,13 +20,13 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=daily</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=demping</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -606,7 +606,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=13ecbc6b-c3d2-4cbb-8891-913a549435b5</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -648,7 +648,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=15259472-668f-4958-b6f0-90e623103cd4</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -702,7 +702,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=170b0b61-7bf9-4018-bf05-98dd5199f243</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1475,12 +1475,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://xn--prislp-fya.no/?product=2f8f90cd-198a-4f72-9dce-24f1809b22cf</loc>
-    <lastmod>2026-08-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://xn--prislp-fya.no/?product=2f9097a8-1bfa-4b84-b671-419c0a359dfd</loc>
     <lastmod>2026-08-13</lastmod>
     <changefreq>daily</changefreq>
@@ -2070,7 +2064,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=438a6985-57f2-4108-8030-13f74d699650</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -2280,7 +2274,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=4d193dcb-07c5-4b34-92ec-57488e6f37fb</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -2976,7 +2970,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=6a3e2385-a1a7-4a37-851e-8a8534aa9eec</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3552,7 +3546,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=7e763cad-3a5a-471f-826a-ce908b11c499</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3978,7 +3972,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=8dc39155-4590-43a5-8ee4-c2a679c0db23</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -4032,7 +4026,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=8fe3b7dc-1ecd-4444-b57e-886c6e9ea717</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -4290,7 +4284,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=98254627-8ac2-4900-ace0-e65dc13c7630</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -4565,6 +4559,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://xn--prislp-fya.no/?product=a3cb09fa-c72c-4c75-995b-6f2f669956d0</loc>
+    <lastmod>2026-08-17</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://xn--prislp-fya.no/?product=a4024170-4bbc-4920-9b9f-2896fa37f6b0</loc>
     <lastmod>2026-07-05</lastmod>
     <changefreq>daily</changefreq>
@@ -4590,7 +4590,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=a6473ddc-6eef-4c97-814c-4c6d1d3bdb4b</loc>
-    <lastmod>2026-07-24</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5016,7 +5016,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=b4bdd3f5-b033-45f6-875b-325899fcc63d</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5112,7 +5112,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=b64b04b7-bf8d-42ee-ad56-50da5c554ebb</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5394,7 +5394,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=c3395847-0e54-41f2-816b-2036f6745212</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5856,7 +5856,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=d8804476-ba23-4c7b-8fb3-f4fffff2a7f9</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6072,7 +6072,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=e118800d-248e-424b-bb39-998a8bdd59e8</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6085,12 +6085,6 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=e15ffafe-e925-45c7-bd42-ea0deb67b73d</loc>
     <lastmod>2026-08-13</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://xn--prislp-fya.no/?product=e18bfa6b-3f3f-4050-b83c-78a35f68b8ae</loc>
-    <lastmod>2026-08-14</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6450,7 +6444,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=ef2e433a-9163-4221-8de5-bfdcf3d9d78a</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6660,7 +6654,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=f6746024-c9f3-4edb-a03b-f484a7b00413</loc>
-    <lastmod>2026-08-13</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
