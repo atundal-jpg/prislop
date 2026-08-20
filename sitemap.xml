@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=tempo</loc>
-    <lastmod>2026-08-19</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -396,7 +396,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=0bb28095-2cf0-467a-8257-c22f3bb37472</loc>
-    <lastmod>2026-08-12</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -474,7 +474,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=0f798199-ee3a-4fe3-bbba-ecb2d1b43627</loc>
-    <lastmod>2026-08-06</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1050,7 +1050,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=23f83e76-10a3-4f8a-b5b2-bf0efb575265</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -3025,6 +3025,12 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=6b0a0c78-6f5e-4d9b-8742-fce0791719ed</loc>
     <lastmod>2026-07-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/?product=6b10fd2b-d9fd-40e8-a308-58d4324ca0fc</loc>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
