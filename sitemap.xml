@@ -1920,7 +1920,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=3e688feb-1f80-4d21-a0f2-e2d0bc645444</loc>
-    <lastmod>2026-07-10</lastmod>
+    <lastmod>2026-08-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -2227,6 +2227,12 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=4aff7765-913e-44ce-8faa-10c5eaf45824</loc>
     <lastmod>2026-07-31</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/?product=4bbbef07-2b82-4f74-8618-caf9d2b531c2</loc>
+    <lastmod>2026-08-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
