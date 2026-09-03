@@ -38,7 +38,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?kategori=terreng</loc>
-    <lastmod>2026-09-02</lastmod>
+    <lastmod>2026-09-03</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -1986,7 +1986,7 @@
   </url>
   <url>
     <loc>https://xn--prislp-fya.no/?product=401c8659-bac2-4668-b4ca-63d98add4e69</loc>
-    <lastmod>2026-07-15</lastmod>
+    <lastmod>2026-09-03</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
@@ -6157,6 +6157,12 @@
   <url>
     <loc>https://xn--prislp-fya.no/?product=e11b0a49-2d61-4e74-bc08-20bcbaebdc7c</loc>
     <lastmod>2026-07-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://xn--prislp-fya.no/?product=e144de20-e832-495e-834e-80c00c2aab38</loc>
+    <lastmod>2026-09-03</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
