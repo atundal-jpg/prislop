@@ -1,8 +1,10 @@
 name: weekly-edition-check
 
 on:
-  schedule:
-    - cron: "0 8 * * 1"
+  # PAUSET 28. september 2026 — prosjektet ligger på is. Se scrape.yml for
+  # bakgrunn. workflow_dispatch står igjen, så den kan kjøres manuelt.
+  # schedule:
+  #   - cron: "0 8 * * 1"
   workflow_dispatch: {}
 
 jobs:

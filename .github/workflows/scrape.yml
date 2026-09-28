@@ -1,8 +1,21 @@
 name: scrape-prislop
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"
+  # PAUSET 28. september 2026 — prosjektet ligger på is.
+  # Timeplanen er kommentert ut, ikke slettet: workflow_dispatch står igjen, så
+  # hele pipelinen kan kjøres manuelt fra Actions-fanen uten å endre noe her.
+  # Vekk den igjen ved å fjerne #-ene på de to linjene under.
+  #
+  # MERK før du slår den på igjen: siste grønne kjøring var 14. september 2026.
+  # post_harvest_check.py stoppet alle kjøringer etter det på to ting —
+  # (1) to Hoka-modeller med drop14=55 %, som vakten vil ha verifisert manuelt,
+  # og (2) |Δproducts| mot en baselinje som er frosset til siste GRØNNE
+  # kjøring, så avviket vokser for hver kjøring og aldri løser seg selv.
+  # Den andre krever et hopp i resplit_tolerance (workflow_dispatch-input
+  # under) på første kjøring for å komme forbi.
+  #
+  # schedule:
+  #   - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       resplit_tolerance:
